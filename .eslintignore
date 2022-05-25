@@ -1,0 +1,5 @@
+node_modules
+dist
+
+src/SliceUpload/lib/
+src/SliceUpload/worker.js

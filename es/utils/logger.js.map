@@ -1,0 +1,1 @@
+{"version":3,"file":"logger.js","sourceRoot":"","sources":["../../src/SliceUpload/utils/logger.ts"],"names":[],"mappings":"AAAA,MAAM,MAAM,GAAG,OAAO,CAAC,KAAK,CAAA;AAE5B,MAAM,CAAC,MAAM,KAAK,GAAG,CAAC,OAAe,EAAE,GAAG,IAAe,EAAE,EAAE;IAC3D,MAAM,SAAS,GAAG,CAAC,wBAAwB,OAAO,EAAE,EAAE,GAAG,IAAI,CAAC,CAAA;IAC9D,MAAM,CAAC,SAAS,CAAC,CAAA;AACnB,CAAC,CAAA"}
