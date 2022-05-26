@@ -1,27 +1,37 @@
 import { h, defineComponent, ref } from 'vue'
 import type { PropType } from 'vue'
-import {
+import type {
   BeforeFileHash,
+  BeforeMergeChunk,
   BeforeUpload,
+  BeforeUploadChunk,
   ChangeFileHash,
   Data,
   ErrorFileHash,
+  ErrorMergeChunk,
+  ErrorUploadChunk,
   MergeAction,
   MergeData,
   SuccessFileHash,
+  SuccessMergeChunk,
+  SuccessUploadChunk,
   UploadAction,
   UploadData,
 } from './interface'
-import { Method } from './internal-interface'
+import { useSliceUpload } from './useSliceUpload'
 
 import './index.less'
-import { useSliceUpload } from './useSliceUpload'
 
 const props = {
   /**
    * 发送到后台的切片参数名
    */
   name: String as PropType<string>,
+
+  /**
+   * 合并切片发送到后台的 hash 参数名
+   */
+  mergeName: String as PropType<string>,
 
   /**
    * 上传文件前的钩子，若返回 false 则停止上传
@@ -69,7 +79,7 @@ const props = {
   /**
    * 合并切片请求方法
    */
-  mergeMethod: Object as PropType<Method>,
+  mergeMethod: Object as PropType<string>,
 
   /**
    * 是否禁用
@@ -106,6 +116,36 @@ const props = {
    */
   onChangeFileHash: Function as PropType<ChangeFileHash>,
 
+  /**
+   * 开始上传切片的钩子
+   */
+  onBeforeUploadChunk: Function as PropType<BeforeUploadChunk>,
+
+  /**
+   * 上传切片成功的钩子
+   */
+  onSuccessUploadChunk: Function as PropType<SuccessUploadChunk>,
+
+  /**
+   * 上传切片失败的钩子
+   */
+  onErrorUploadChunk: Function as PropType<ErrorUploadChunk>,
+
+  /**
+   * 开始合并切片的钩子
+   */
+  onBeforeMergeChunk: Function as PropType<BeforeMergeChunk>,
+
+  /**
+   * 合并切片成功的钩子
+   */
+  onSuccessMergeChunk: Function as PropType<SuccessMergeChunk>,
+
+  /**
+   * 合并切片失败的钩子
+   */
+  onErrorMergeChunk: Function as PropType<ErrorMergeChunk>,
+
   onChange: Function,
 }
 
@@ -117,20 +157,67 @@ export const SliceUpload = defineComponent({
   setup(props) {
     const {
       chunkSize,
+      withCredentials,
+
+      uploadAction,
+      uploadData,
+      uploadHeaders,
+      uploadMethod,
+
+      mergeAction,
+      mergeData,
+      mergeHeaders,
+      mergeMethod,
+
+      name,
+      mergeName,
+
       onBeforeFileHash,
       onSuccessFileHash,
       onErrorFileHash,
       onChangeFileHash,
+
+      onBeforeUploadChunk,
+      onSuccessUploadChunk,
+      onErrorUploadChunk,
+
+      onBeforeMergeChunk,
+      onSuccessMergeChunk,
+      onErrorMergeChunk,
     } = props
     const inputRef = ref<HTMLInputElement | null>(null)
 
     const { start } = useSliceUpload({
       chunkSize,
+      withCredentials,
+
+      name,
+      uploadAction,
+      uploadData,
+      uploadHeaders,
+      uploadMethod,
+
+      mergeName,
+      mergeAction,
+      mergeData,
+      mergeHeaders,
+      mergeMethod,
+
       // hash hooks
       beforeFileHash: onBeforeFileHash,
       successFileHash: onSuccessFileHash,
       errorFileHash: onErrorFileHash,
       changeFileHash: onChangeFileHash,
+
+      // upload chunks hooks
+      beforeUploadChunk: onBeforeUploadChunk,
+      successUploadChunk: onSuccessUploadChunk,
+      errorUploadChunk: onErrorUploadChunk,
+
+      // merge chunks hooks
+      beforeMergeChunk: onBeforeMergeChunk,
+      successMergeChunk: onSuccessMergeChunk,
+      errorMergeChunk: onErrorMergeChunk,
     })
 
     /**
@@ -150,11 +237,11 @@ export const SliceUpload = defineComponent({
     /**
      * 修改选择的文件
      */
-    const handleChangeFile = (e: Event) => {
+    const handleChangeFile = async (e: Event) => {
       const target = e.target as HTMLInputElement
       const { files } = target
       if (files && files[0]) {
-        start(files[0])
+        await start(files[0])
       }
       target.value = ''
     }

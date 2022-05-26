@@ -10,4 +10,3 @@ export interface FileHashToMain {
     error?: unknown
 }
 
-export type Method = 'GET'

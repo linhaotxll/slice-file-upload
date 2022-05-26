@@ -6,6 +6,14 @@ import {
   UploadAction,
   UploadData,
   Data,
+  BeforeUploadChunk,
+  SuccessUploadChunk,
+  ErrorUploadChunk,
+  MergeAction,
+  MergeData,
+  BeforeMergeChunk,
+  SuccessMergeChunk,
+  ErrorMergeChunk,
 } from './interface'
 import { FileHashToMain, FileHashToWorker } from './internal-interface'
 import {
@@ -22,12 +30,34 @@ export interface SliceUploadOptions {
   chunkSize?: number
   concurrentMax?: number
 
+  /**
+   * ========== hooks ==========
+   */
+
+  /**
+   * ========== hask hooks ==========
+   */
   beforeFileHash?: BeforeFileHash
   changeFileHash?: ChangeFileHash
   successFileHash?: SuccessFileHash
   errorFileHash?: ErrorFileHash
 
+  /**
+   * ========== upload chunk hooks ==========
+   */
+  beforeUploadChunk?: BeforeUploadChunk
+  successUploadChunk?: SuccessUploadChunk
+  errorUploadChunk?: ErrorUploadChunk
+
+  /**
+   * merge chunk hooks
+   */
+  beforeMergeChunk?: BeforeMergeChunk
+  successMergeChunk?: SuccessMergeChunk
+  errorMergeChunk?: ErrorMergeChunk
+
   name?: string
+  mergeName?: string
 
   withCredentials?: boolean
 
@@ -35,6 +65,11 @@ export interface SliceUploadOptions {
   uploadData?: UploadData
   uploadHeaders?: Data
   uploadMethod?: string
+
+  mergeAction?: MergeAction
+  mergeData?: MergeData
+  mergeHeaders?: Data
+  mergeMethod?: string
 }
 
 export type MergeSliceUploadOptions = Required<SliceUploadOptions>
@@ -54,7 +89,16 @@ const defaultOptions: MergeSliceUploadOptions = {
   successFileHash: noop,
   errorFileHash: noop,
 
-  name: '',
+  beforeUploadChunk: noop,
+  successUploadChunk: noop,
+  errorUploadChunk: noop,
+
+  beforeMergeChunk: noop,
+  successMergeChunk: noop,
+  errorMergeChunk: noop,
+
+  name: 'file',
+  mergeName: 'fileHash',
 
   withCredentials: false,
 
@@ -62,6 +106,11 @@ const defaultOptions: MergeSliceUploadOptions = {
   uploadData: {},
   uploadHeaders: {},
   uploadMethod: 'post',
+
+  mergeAction: '',
+  mergeData: {},
+  mergeHeaders: {},
+  mergeMethod: 'post',
 }
 
 const createFormData = (name: string, chunk: Blob, data?: Data) => {
@@ -75,21 +124,40 @@ const createFormData = (name: string, chunk: Blob, data?: Data) => {
   return fd
 }
 
+const createMergeParams = (fileHash: string, name: string, data: Data) => {
+  return { [name]: fileHash, ...data }
+}
+
 export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   // merge options
   const {
     chunkSize,
-    beforeFileHash,
-    successFileHash,
-    changeFileHash,
-
     name,
+    mergeName,
     withCredentials,
 
     uploadAction,
     uploadData,
     uploadHeaders,
     uploadMethod,
+
+    mergeAction,
+    mergeData,
+    mergeHeaders,
+    mergeMethod,
+
+    beforeFileHash,
+    successFileHash,
+    changeFileHash,
+    errorFileHash,
+
+    beforeUploadChunk,
+    successUploadChunk,
+    errorUploadChunk,
+
+    beforeMergeChunk,
+    successMergeChunk,
+    errorMergeChunk,
   } = merge({}, defaultOptions, options) as MergeSliceUploadOptions
 
   /**
@@ -119,6 +187,14 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
       worker.addEventListener('message', e => {
         const { fileHash, progress, index, done } = e.data as FileHashToMain
 
+        // change filehash hook
+        invokeHooks(changeFileHash, Hooks.CHANGE_FILE_HASH, {
+          file,
+          progress,
+          index,
+          chunks,
+        })
+
         if (done) {
           invokeHooks(successFileHash, Hooks.SUCCESS_FILE_HASH, {
             fileHash: fileHash!,
@@ -127,18 +203,15 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
           })
           return resolve(fileHash!)
         }
-
-        // change filehash hook
-        invokeHooks(changeFileHash, Hooks.CHANGE_FILE_HASH, {
-          file,
-          progress,
-          index,
-          chunks,
-        })
       })
 
-      worker.addEventListener('messageerror', () => {
+      worker.addEventListener('messageerror', error => {
         // TODO:
+        invokeHooks(errorFileHash, Hooks.ERROR_FILE_HASH, {
+          file,
+          chunks,
+          error,
+        })
         reject()
       })
 
@@ -153,23 +226,105 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   const createUploadChunkTask = async (
     file: File,
     fileHash: string,
+    index: number,
     chunk: Blob
   ) => {
     const method = uploadMethod
     const url = isFunction(uploadAction)
-      ? await uploadAction({ file, fileHash, chunk })
+      ? await uploadAction({ file, fileHash, chunk, index })
       : uploadAction
+
     const data = isFunction(uploadData)
-      ? await uploadData({ file, fileHash, chunk })
+      ? await uploadData({ file, fileHash, chunk, index })
       : createFormData(name, chunk, uploadData)
 
-    return request({
-      url,
-      data,
-      method,
-      responseType: 'blob',
-      withCredentials,
+    invokeHooks(beforeUploadChunk, Hooks.BEFORE_UPLOAD_CHUNK, {
+      file,
+      fileHash,
+      index,
+      chunk,
     })
+
+    try {
+      const response = await request({
+        url,
+        data,
+        method,
+        withCredentials,
+        headers: uploadHeaders,
+      })
+
+      invokeHooks(successUploadChunk, Hooks.SUCCESS_UPLOAD_CHUNK, {
+        file,
+        fileHash,
+        index,
+        chunk,
+        response,
+      })
+
+      return response
+    } catch (error) {
+      invokeHooks(errorUploadChunk, Hooks.ERROR_UPLOAD_CHUNK, {
+        file,
+        fileHash,
+        index,
+        chunk,
+        error,
+      })
+    }
+  }
+
+  /**
+   * 开始上传
+   */
+  const startUpload = async (file: File, fileHash: string, chunks: Blob[]) => {
+    const tasks = chunks.map((chunk, index) =>
+      createUploadChunkTask(file, fileHash, index, chunk)
+    )
+    await Promise.all(tasks)
+  }
+
+  /**
+   * 合并切片
+   */
+  const mergeChunks = async (file: File, fileHash: string) => {
+    const method = mergeMethod
+    const url = isFunction(mergeAction)
+      ? await mergeAction({ file, fileHash })
+      : mergeAction
+
+    const data = isFunction(mergeData)
+      ? await mergeData({ file, fileHash })
+      : createMergeParams(fileHash, mergeName, mergeData)
+
+    invokeHooks(beforeMergeChunk, Hooks.BEFORE_MERGE_CHUNK, { file, fileHash })
+
+    try {
+      const response = await request({
+        url,
+        method,
+        data,
+        withCredentials,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...mergeHeaders,
+        },
+      })
+
+      invokeHooks(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
+        file,
+        fileHash,
+        response,
+      })
+
+      return response
+    } catch (error) {
+      invokeHooks(errorMergeChunk, Hooks.ERROR_MERGE_CHUNK, {
+        file,
+        fileHash,
+        error,
+      })
+    }
   }
 
   /**
@@ -179,10 +334,8 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     // TODO: beforeUpload 校验文件
     const chunks = createChunks(file, chunkSize)
     const fileHash = await createFileHash(file, chunks)
-    const tasks = chunks.map(chunk =>
-      createUploadChunkTask(file, fileHash, chunk)
-    )
-    console.log('fileHash: ', fileHash)
+    await startUpload(file, fileHash, chunks)
+    await mergeChunks(file, fileHash)
   }
 
   return {

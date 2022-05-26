@@ -1,4 +1,7 @@
 import { forEach } from './array'
+import { merge } from './merge'
+import { serializeForm } from './serialize'
+import { isFormData } from './types'
 
 export interface RequestOptions {
   url: string
@@ -6,9 +9,24 @@ export interface RequestOptions {
   withCredentials?: boolean
   headers?: Record<string, string>
   responseType?: XMLHttpRequestResponseType
+  timeout?: number
   data?: any
 
-  onProgress?: (loaded: number, total: number) => void
+  abort?: (cancel: () => void) => void
+
+  onUploadProgress?: (
+    this: XMLHttpRequestUpload,
+    loaded: number,
+    total: number
+  ) => void
+  onObort?: (
+    this: XMLHttpRequest,
+    e: ProgressEvent<XMLHttpRequestEventTarget>
+  ) => void
+  onTimeout?: (
+    this: XMLHttpRequest,
+    e: ProgressEvent<XMLHttpRequestEventTarget>
+  ) => void
 }
 
 const setHeaders = (
@@ -22,46 +40,82 @@ const setHeaders = (
   }
 }
 
-export const request = (options: RequestOptions) => {
-  return new Promise((resolve, reject) => {
+export const request = <T = any>(options: RequestOptions) => {
+  return new Promise<T>((resolve, reject) => {
     const {
       withCredentials,
       headers,
       method = 'GET',
       url,
       data,
+      timeout,
       responseType = 'json',
-      onProgress,
+      onUploadProgress,
+      onTimeout,
+      onObort,
+      abort,
     } = options
     const xhr = new XMLHttpRequest()
 
     xhr.withCredentials = !!withCredentials
-    xhr.open(method.toUpperCase(), url)
     xhr.responseType = responseType
+    timeout && (xhr.timeout = timeout)
+
+    let resolveData = data
+    if (isFormData(data) && headers) {
+      delete headers['Content-Type']
+    } else if (
+      (headers?.['Content-Type']?.indexOf('application/json') ?? -1) > 0
+    ) {
+      resolveData = data
+    } else {
+      resolveData = serializeForm(data)
+    }
+    // else if (
+    //   (headers?.['Content-Type']?.indexOf(
+    //     'application/x-www-form-urlencoded'
+    //   ) ?? -1) > 0
+    // ) {
+    //   resolveData = serializeForm(data)
+    // }
+
+    xhr.open(method.toUpperCase(), url)
     setHeaders(xhr, headers)
+
+    const cancel = () => {
+      xhr.abort()
+    }
+
+    abort?.(cancel)
 
     xhr.addEventListener('load', function () {
       const status = this.status
       if (status >= 200 && status < 400) {
-        resolve(this.response)
+        return resolve(this.response)
       }
-      reject()
+      reject(this.response)
     })
 
-    xhr.addEventListener('progress', function (e) {
+    xhr.upload.addEventListener('progress', function (e) {
       if (e.lengthComputable) {
-        onProgress?.(e.loaded, e.total)
+        onUploadProgress?.call(this, e.loaded, e.total)
       }
     })
 
-    xhr.addEventListener('timeout', function () {
-      reject()
+    xhr.addEventListener('timeout', function (e) {
+      onTimeout?.call(this, e)
+      reject(e)
     })
 
-    xhr.addEventListener('abort', function () {
-      reject()
+    xhr.addEventListener('abort', function (e) {
+      onObort?.call(this, e)
+      reject(e)
     })
 
-    xhr.send(data)
+    xhr.addEventListener('error', function (e) {
+      reject(e)
+    })
+
+    xhr.send(resolveData)
   })
 }

@@ -6,6 +6,10 @@ import eslint from 'vite-plugin-eslint'
 export default defineConfig({
   plugins: [vue(), eslint({ fix: true, exclude: 'node_modules', extensions: ['.ts', '.tsx'] })],
 
+  server: {
+    port: 3001
+  },
+
   esbuild: {
     jsxFactory: 'h',
     jsxFragment: 'Fragment',
