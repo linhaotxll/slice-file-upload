@@ -1,5 +1,4 @@
 import { forEach } from './array'
-import { merge } from './merge'
 import { serializeForm } from './serialize'
 import { isFormData } from './types'
 
@@ -10,7 +9,7 @@ export interface RequestOptions {
   headers?: Record<string, string>
   responseType?: XMLHttpRequestResponseType
   timeout?: number
-  data?: any
+  data?: unknown
 
   abort?: (cancel: () => void) => void
 
@@ -40,7 +39,7 @@ const setHeaders = (
   }
 }
 
-export const request = <T = any>(options: RequestOptions) => {
+export const request = <T = unknown>(options: RequestOptions) => {
   return new Promise<T>((resolve, reject) => {
     const {
       withCredentials,
@@ -65,19 +64,12 @@ export const request = <T = any>(options: RequestOptions) => {
     if (isFormData(data) && headers) {
       delete headers['Content-Type']
     } else if (
-      (headers?.['Content-Type']?.indexOf('application/json') ?? -1) > 0
+      (headers?.['Content-Type']?.indexOf('application/json') ?? -1) >= 0
     ) {
-      resolveData = data
+      resolveData = `${JSON.stringify(data)}`
     } else {
       resolveData = serializeForm(data)
     }
-    // else if (
-    //   (headers?.['Content-Type']?.indexOf(
-    //     'application/x-www-form-urlencoded'
-    //   ) ?? -1) > 0
-    // ) {
-    //   resolveData = serializeForm(data)
-    // }
 
     xhr.open(method.toUpperCase(), url)
     setHeaders(xhr, headers)
