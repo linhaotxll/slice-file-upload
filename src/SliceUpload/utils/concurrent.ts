@@ -1,6 +1,7 @@
 export interface ConcurrentRequestOptions {
   max?: number
   retryCount?: number
+  beforeRequest?: () => boolean
 }
 
 export type Request = (...args: any[]) => Promise<unknown>
@@ -8,6 +9,7 @@ export type Request = (...args: any[]) => Promise<unknown>
 const defaultOptions: Required<ConcurrentRequestOptions> = {
   max: 5,
   retryCount: 0,
+  beforeRequest: () => true,
 }
 
 export const concurrentRequest = async (
@@ -23,7 +25,7 @@ export const concurrentRequest = async (
     const total = requests.length
     const errorRequests: Request[] = []
     const retryCountsMap = new Map<Request, number>()
-    const { retryCount } = resolveOptions
+    const { retryCount, beforeRequest } = resolveOptions
 
     let { max } = resolveOptions
     let count = 0
@@ -35,6 +37,10 @@ export const concurrentRequest = async (
     }
 
     const start = () => {
+      if (!beforeRequest()) {
+        return
+      }
+
       while ((errorRequests.length || index < total) && max > 0) {
         const isCallErrorRequest = !!errorRequests.length
         const request = errorRequests.length

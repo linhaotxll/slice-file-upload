@@ -206,7 +206,7 @@ export const SliceUpload = defineComponent({
     } = props
     const inputRef = ref<HTMLInputElement | null>(null)
 
-    const { start } = useSliceUpload({
+    const { start, cancel, resume } = useSliceUpload({
       chunkSize,
       withCredentials,
       concurrentMax,
@@ -273,6 +273,8 @@ export const SliceUpload = defineComponent({
       handleTrigger,
       handleOpenSelectFile,
       handleChangeFile,
+      cancel,
+      resume,
     }
   },
 
@@ -298,4 +300,6 @@ export const SliceUpload = defineComponent({
       </div>
     )
   },
+
+  expose: ['cancel', 'resume'],
 })

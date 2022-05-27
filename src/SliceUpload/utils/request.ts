@@ -74,11 +74,9 @@ export const request = <T = unknown>(options: RequestOptions) => {
     xhr.open(method.toUpperCase(), url)
     setHeaders(xhr, headers)
 
-    const cancel = () => {
+    abort?.(() => {
       xhr.abort()
-    }
-
-    abort?.(cancel)
+    })
 
     xhr.addEventListener('load', function () {
       const status = this.status

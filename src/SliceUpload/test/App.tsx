@@ -1,5 +1,5 @@
-import { h, defineComponent } from 'vue'
-import { SliceUpload } from '..'
+import { h, defineComponent, ref } from 'vue'
+import { SliceUpload } from '../SliceUpload'
 import { request } from '../utils'
 
 interface Response {
@@ -13,9 +13,19 @@ interface Response {
 let c: () => void | undefined
 
 export const App = defineComponent({
+  setup() {
+    return {
+      uploadRef: ref(null),
+    }
+  },
+
   render() {
-    const handleSuspense = async () => {
-      c?.()
+    const handleSuspenseAll = async () => {
+      this.uploadRef.cancel()
+    }
+
+    const handleResume = () => {
+      this.uploadRef.resume()
     }
 
     const handleChangeFile = async (e: Event) => {
@@ -55,17 +65,23 @@ export const App = defineComponent({
     return (
       <div class="1" id="2">
         <SliceUpload
+          ref="uploadRef"
           name="chunk"
           uploadAction="http://localhost:3000/api/common/upload-chunk"
           mergeAction="http://localhost:3000/api/common/merge-chunk"
           mergeHeaders={{ 'Content-Type': 'application/json; charset=utf-8' }}
-          uploadData={({ file, fileHash, chunk }) => {
+          chunkSize={1024 * 1024 * 10}
+          concurrentMax={3}
+          concurrentRetryMax={2}
+          uploadData={async ({ index, fileHash, chunk }) => {
+            // debugger
             const fd = new FormData()
-            fd.append('chunk', chunk)
+            fd.append('chunk', chunk.blob)
             fd.append('hash', fileHash)
+            fd.append('index', index + '')
             return fd
           }}
-          mergeData={({ file, fileHash }) => {
+          mergeData={async ({ file, fileHash }) => {
             return { fileHash1: fileHash }
           }}
           onBeforeFileHash={(...args) => {
@@ -89,6 +105,9 @@ export const App = defineComponent({
           onErrorUploadChunk={(...args) => {
             console.log('error upload chunk: ', ...args)
           }}
+          onProgressUploadChunk={({ index, loaded, total }) => {
+            console.log(`第 ${index} 个切片进度: `, loaded / total)
+          }}
           onBeforeMergeChunk={(...args) => {
             console.log('before merge chunk: ', ...args)
           }}
@@ -99,12 +118,18 @@ export const App = defineComponent({
             console.log('error merge chunk: ', ...args)
           }}
         >
-          <button>Upload</button>
+          {{
+            default: (...args: unknown[]) => {
+              console.log('default slots: ', ...args)
+              return <button>Upload</button>
+            },
+          }}
         </SliceUpload>
 
-        <input type="file" onChange={handleChangeFile} />
+        {/* <input type="file" onChange={handleChangeFile} /> */}
 
-        <button onClick={handleSuspense}>暂停</button>
+        <button onClick={handleSuspenseAll}>暂停</button>
+        <button onClick={handleResume}>恢复</button>
       </div>
     )
   },

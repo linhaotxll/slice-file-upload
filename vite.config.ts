@@ -4,10 +4,17 @@ import eslint from 'vite-plugin-eslint'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [vue(), eslint({ fix: true, exclude: 'node_modules', extensions: ['.ts', '.tsx'] })],
+  plugins: [
+    vue(),
+    eslint({
+      fix: true,
+      exclude: 'node_modules',
+      extensions: ['.ts', '.tsx', '.json'],
+    }),
+  ],
 
   server: {
-    port: 3001
+    port: 3001,
   },
 
   esbuild: {
@@ -17,6 +24,6 @@ export default defineConfig({
 
   build: {
     outDir: 'site',
-    assetsDir: 'assets'
-  }
+    assetsDir: 'assets',
+  },
 })

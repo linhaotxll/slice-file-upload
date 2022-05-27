@@ -1,3 +1,4 @@
+import { Chunk } from './helpers'
 import {
   BeforeFileHash,
   ErrorFileHash,
@@ -15,6 +16,7 @@ import {
   SuccessMergeChunk,
   ErrorMergeChunk,
   ProgressUploadChunk,
+  Status,
 } from './interface'
 import { FileHashToMain, FileHashToWorker } from './internal-interface'
 import {
@@ -80,13 +82,13 @@ export interface SliceUploadOptions {
 export type MergeSliceUploadOptions = Required<SliceUploadOptions>
 
 // 10M
-const CHUNK_SIZE = 1024 * 1024 * 10
+const DEFAULT_CHUNK_SIZE = 1024 * 1024 * 10
 
 // eslint-disable-next-line
 const noop = () => {}
 
 const defaultOptions: MergeSliceUploadOptions = {
-  chunkSize: CHUNK_SIZE,
+  chunkSize: DEFAULT_CHUNK_SIZE,
   concurrentMax: 5,
   concurrentRetryMax: 2,
 
@@ -120,9 +122,9 @@ const defaultOptions: MergeSliceUploadOptions = {
   mergeMethod: 'post',
 }
 
-const createFormData = (name: string, chunk: Blob, data?: Data) => {
+const createFormData = (name: string, chunk: Chunk, data?: Data) => {
   const fd = new FormData()
-  fd.append(name, chunk)
+  fd.append(name, chunk.blob)
   if (data) {
     forEach(Object.keys(data), key => {
       fd.append(key, data[key])
@@ -170,16 +172,26 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     errorMergeChunk,
   } = merge({}, defaultOptions, options) as MergeSliceUploadOptions
 
+  // 切片列表
+  let chunks: Chunk[] | undefined
+  let fileHash: string | undefined
+  let file: File | undefined
+  let resumeChunks: Chunk[] | undefined
+
+  // 中断请求的列表
+  let aborts: ((() => void) | undefined)[] | undefined
+  let aborted = false
+
   /**
    * 创建文件切片
    */
   const createChunks = (file: File, chunkSize: number) => {
     let currentSize = 0
-    const chunks: Blob[] = []
+    const chunks: Chunk[] = []
     const total = file.size
 
     while (currentSize < total) {
-      chunks.push(file.slice(currentSize, currentSize + chunkSize))
+      chunks.push(new Chunk(file.slice(currentSize, currentSize + chunkSize)))
       currentSize += chunkSize
     }
     return chunks
@@ -188,7 +200,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   /**
    * 计算文件 hash
    */
-  const createFileHash = async (file: File, chunks: Blob[]) => {
+  const createFileHash = async (file: File, chunks: Chunk[]) => {
     return new Promise<string>((resolve, reject) => {
       // before filehash hook
       callWithErrorHandling(
@@ -242,7 +254,8 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     file: File,
     fileHash: string,
     index: number,
-    chunk: Blob
+    chunk: Chunk,
+    abort: (cancel: () => void) => void
   ) => {
     const method = uploadMethod
     const url = isFunction(uploadAction)
@@ -291,6 +304,9 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
             }
           )
         },
+        abort(cancel) {
+          abort(cancel)
+        },
       })
 
       callWithErrorHandling(successUploadChunk, Hooks.SUCCESS_UPLOAD_CHUNK, {
@@ -317,16 +333,52 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   /**
    * 开始上传
    */
-  const startUpload = async (file: File, fileHash: string, chunks: Blob[]) => {
+  const startUpload = async (file: File, fileHash: string, chunks: Chunk[]) => {
+    aborted = false
+    aborts = []
+    resumeChunks = undefined
+    // 创建请求任务
     const tasks = chunks.map(
       (chunk, index) => () =>
-        createUploadChunkTask(file, fileHash, index, chunk)
+        createUploadChunkTask(file, fileHash, index, chunk, cancel => {
+          aborts![index] = cancel
+        })
     )
+
+    // 并发控制数量执行上传请求
     await concurrentRequest(tasks, {
       max: concurrentMax,
       retryCount: concurrentRetryMax,
+      beforeRequest: () => !aborted,
     })
-    // await Promise.all(tasks)
+  }
+
+  /**
+   * 取消上传
+   */
+  const cancelUpload = () => {
+    if (aborts) {
+      aborted = true
+      forEach(aborts, (cancel, index) => {
+        if (cancel) {
+          cancel()
+          resumeChunks = resumeChunks || []
+          resumeChunks[index] = chunks![index]
+        }
+        cancel && cancel()
+      })
+      aborts = undefined
+    }
+    console.log('resumeChunks: ', resumeChunks)
+  }
+
+  /**
+   * 恢复上传
+   */
+  const resumeUpload = async () => {
+    if (file && resumeChunks) {
+      await startUpload(file, fileHash!, resumeChunks)
+    }
   }
 
   /**
@@ -384,15 +436,18 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   /**
    * 开始上传
    */
-  const start = async (file: File) => {
+  const start = async (uploadFile: File) => {
     // TODO: beforeUpload 校验文件
-    const chunks = createChunks(file, chunkSize)
-    const fileHash = await createFileHash(file, chunks)
-    await startUpload(file, fileHash, chunks)
-    await mergeChunks(file, fileHash)
+    file = uploadFile
+    chunks = createChunks(uploadFile, chunkSize)
+    fileHash = await createFileHash(uploadFile, chunks)
+    await startUpload(uploadFile, fileHash, chunks)
+    await mergeChunks(uploadFile, fileHash)
   }
 
   return {
     start,
+    cancel: cancelUpload,
+    resume: resumeUpload,
   }
 }

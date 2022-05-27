@@ -1,4 +1,3 @@
-import { error } from './logger'
 import { isError, isPromise } from './types'
 
 export enum Hooks {

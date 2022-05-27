@@ -2,6 +2,9 @@ const toString = Object.prototype.toString
 const toRawType = (value: unknown) => toString.call(value)
 const toType = (value: unknown) => toRawType(value).slice(8, -1)
 
+export const isNumber = (value: unknown): value is number =>
+  typeof value === 'number'
+
 export const isString = (value: unknown): value is string =>
   typeof value === 'string'
 
