@@ -13,3 +13,12 @@ export const isPlainObject = (value: unknown): value is Record<string, any> =>
 
 export const isFormData = (value: unknown): value is FormData =>
   toType(value) === 'FormData'
+
+export const isObject = (value: unknown): value is Record<any, any> =>
+  typeof value === 'object' && value !== null
+
+export const isPromise = <T = any>(value: unknown): value is Promise<T> =>
+  isObject(value) && isFunction(value.then) && isFunction(value.catch)
+
+export const isError = (value: unknown): value is Error =>
+  toType(value) === 'Error'

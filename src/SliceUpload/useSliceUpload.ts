@@ -14,21 +14,25 @@ import {
   BeforeMergeChunk,
   SuccessMergeChunk,
   ErrorMergeChunk,
+  ProgressUploadChunk,
 } from './interface'
 import { FileHashToMain, FileHashToWorker } from './internal-interface'
 import {
   forEach,
   Hooks,
-  invokeHooks,
+  callWithErrorHandling,
   isFunction,
   merge,
   request,
+  callWithAsyncErrorHandling,
+  concurrentRequest,
 } from './utils'
 import FileHashWorker from './worker.js?worker'
 
 export interface SliceUploadOptions {
   chunkSize?: number
   concurrentMax?: number
+  concurrentRetryMax?: number
 
   /**
    * ========== hooks ==========
@@ -48,6 +52,7 @@ export interface SliceUploadOptions {
   beforeUploadChunk?: BeforeUploadChunk
   successUploadChunk?: SuccessUploadChunk
   errorUploadChunk?: ErrorUploadChunk
+  progressUploadChunk?: ProgressUploadChunk
 
   /**
    * merge chunk hooks
@@ -82,7 +87,8 @@ const noop = () => {}
 
 const defaultOptions: MergeSliceUploadOptions = {
   chunkSize: CHUNK_SIZE,
-  concurrentMax: 2,
+  concurrentMax: 5,
+  concurrentRetryMax: 2,
 
   beforeFileHash: noop,
   changeFileHash: noop,
@@ -92,6 +98,7 @@ const defaultOptions: MergeSliceUploadOptions = {
   beforeUploadChunk: noop,
   successUploadChunk: noop,
   errorUploadChunk: noop,
+  progressUploadChunk: noop,
 
   beforeMergeChunk: noop,
   successMergeChunk: noop,
@@ -135,6 +142,8 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     name,
     mergeName,
     withCredentials,
+    concurrentMax,
+    concurrentRetryMax,
 
     uploadAction,
     uploadData,
@@ -154,6 +163,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     beforeUploadChunk,
     successUploadChunk,
     errorUploadChunk,
+    progressUploadChunk,
 
     beforeMergeChunk,
     successMergeChunk,
@@ -181,14 +191,19 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   const createFileHash = async (file: File, chunks: Blob[]) => {
     return new Promise<string>((resolve, reject) => {
       // before filehash hook
-      invokeHooks(beforeFileHash, Hooks.BEFORE_FILE_HASH, file, chunks)
+      callWithErrorHandling(
+        beforeFileHash,
+        Hooks.BEFORE_FILE_HASH,
+        file,
+        chunks
+      )
 
       const worker = new FileHashWorker()
       worker.addEventListener('message', e => {
         const { fileHash, progress, index, done } = e.data as FileHashToMain
 
         // change filehash hook
-        invokeHooks(changeFileHash, Hooks.CHANGE_FILE_HASH, {
+        callWithErrorHandling(changeFileHash, Hooks.CHANGE_FILE_HASH, {
           file,
           progress,
           index,
@@ -196,7 +211,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
         })
 
         if (done) {
-          invokeHooks(successFileHash, Hooks.SUCCESS_FILE_HASH, {
+          callWithErrorHandling(successFileHash, Hooks.SUCCESS_FILE_HASH, {
             fileHash: fileHash!,
             file,
             chunks,
@@ -207,7 +222,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
 
       worker.addEventListener('messageerror', error => {
         // TODO:
-        invokeHooks(errorFileHash, Hooks.ERROR_FILE_HASH, {
+        callWithErrorHandling(errorFileHash, Hooks.ERROR_FILE_HASH, {
           file,
           chunks,
           error,
@@ -231,14 +246,24 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   ) => {
     const method = uploadMethod
     const url = isFunction(uploadAction)
-      ? await uploadAction({ file, fileHash, chunk, index })
+      ? await callWithAsyncErrorHandling(uploadAction, Hooks.UPLOAD_ACTION, {
+          file,
+          fileHash,
+          chunk,
+          index,
+        })
       : uploadAction
 
     const data = isFunction(uploadData)
-      ? await uploadData({ file, fileHash, chunk, index })
+      ? await callWithAsyncErrorHandling(uploadData, Hooks.UPLOAD_DATA, {
+          file,
+          fileHash,
+          chunk,
+          index,
+        })
       : createFormData(name, chunk, uploadData)
 
-    invokeHooks(beforeUploadChunk, Hooks.BEFORE_UPLOAD_CHUNK, {
+    callWithErrorHandling(beforeUploadChunk, Hooks.BEFORE_UPLOAD_CHUNK, {
       file,
       fileHash,
       index,
@@ -252,9 +277,23 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
         method,
         withCredentials,
         headers: uploadHeaders,
+        onUploadProgress(loaded, total) {
+          callWithErrorHandling(
+            progressUploadChunk,
+            Hooks.PROGRESS_UPLOAD_CHUNK,
+            {
+              file,
+              fileHash,
+              index,
+              chunk,
+              loaded,
+              total,
+            }
+          )
+        },
       })
 
-      invokeHooks(successUploadChunk, Hooks.SUCCESS_UPLOAD_CHUNK, {
+      callWithErrorHandling(successUploadChunk, Hooks.SUCCESS_UPLOAD_CHUNK, {
         file,
         fileHash,
         index,
@@ -264,13 +303,14 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
 
       return response
     } catch (error) {
-      invokeHooks(errorUploadChunk, Hooks.ERROR_UPLOAD_CHUNK, {
+      callWithErrorHandling(errorUploadChunk, Hooks.ERROR_UPLOAD_CHUNK, {
         file,
         fileHash,
         index,
         chunk,
         error,
       })
+      throw error
     }
   }
 
@@ -278,10 +318,15 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
    * 开始上传
    */
   const startUpload = async (file: File, fileHash: string, chunks: Blob[]) => {
-    const tasks = chunks.map((chunk, index) =>
-      createUploadChunkTask(file, fileHash, index, chunk)
+    const tasks = chunks.map(
+      (chunk, index) => () =>
+        createUploadChunkTask(file, fileHash, index, chunk)
     )
-    await Promise.all(tasks)
+    await concurrentRequest(tasks, {
+      max: concurrentMax,
+      retryCount: concurrentRetryMax,
+    })
+    // await Promise.all(tasks)
   }
 
   /**
@@ -290,14 +335,23 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   const mergeChunks = async (file: File, fileHash: string) => {
     const method = mergeMethod
     const url = isFunction(mergeAction)
-      ? await mergeAction({ file, fileHash })
+      ? await callWithAsyncErrorHandling(mergeAction, Hooks.MERGE_ACTION, {
+          file,
+          fileHash,
+        })
       : mergeAction
 
     const data = isFunction(mergeData)
-      ? await mergeData({ file, fileHash })
+      ? await callWithAsyncErrorHandling(mergeData, Hooks.MERGE_DATA, {
+          file,
+          fileHash,
+        })
       : createMergeParams(fileHash, mergeName, mergeData)
 
-    invokeHooks(beforeMergeChunk, Hooks.BEFORE_MERGE_CHUNK, { file, fileHash })
+    callWithErrorHandling(beforeMergeChunk, Hooks.BEFORE_MERGE_CHUNK, {
+      file,
+      fileHash,
+    })
 
     try {
       const response = await request({
@@ -311,7 +365,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
         },
       })
 
-      invokeHooks(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
+      callWithErrorHandling(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
         file,
         fileHash,
         response,
@@ -319,7 +373,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
 
       return response
     } catch (error) {
-      invokeHooks(errorMergeChunk, Hooks.ERROR_MERGE_CHUNK, {
+      callWithErrorHandling(errorMergeChunk, Hooks.ERROR_MERGE_CHUNK, {
         file,
         fileHash,
         error,

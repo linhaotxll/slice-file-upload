@@ -70,6 +70,18 @@ export type ErrorUploadChunk = <T = unknown>(params: {
     error: T
 }) => void
 
+/**
+ * progress upload chunk hook
+ */
+export type ProgressUploadChunk = (params: {
+    file: File
+    fileHash: string
+    chunk: Blob
+    index: number
+    loaded: number
+    total: number
+}) => void
+
 
 /**
  * before merge chunk hook
