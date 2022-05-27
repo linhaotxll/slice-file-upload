@@ -12,6 +12,7 @@ import type {
   ErrorUploadChunk,
   MergeAction,
   MergeData,
+  ProgressUploadChunk,
   SuccessFileHash,
   SuccessMergeChunk,
   SuccessUploadChunk,
@@ -32,6 +33,16 @@ const props = {
    * 合并切片发送到后台的 hash 参数名
    */
   mergeName: String as PropType<string>,
+
+  /**
+   * 并发上传切片的最大个数
+   */
+  concurrentMax: Number as PropType<number>,
+
+  /**
+   * 并发上传切片失败的重试次数
+   */
+  concurrentRetryMax: Number as PropType<number>,
 
   /**
    * 上传文件前的钩子，若返回 false 则停止上传
@@ -132,6 +143,11 @@ const props = {
   onErrorUploadChunk: Function as PropType<ErrorUploadChunk>,
 
   /**
+   * 上传切片 - 上传中 hook
+   */
+  onProgressUploadChunk: Function as PropType<ProgressUploadChunk>,
+
+  /**
    * 开始合并切片的钩子
    */
   onBeforeMergeChunk: Function as PropType<BeforeMergeChunk>,
@@ -158,6 +174,8 @@ export const SliceUpload = defineComponent({
     const {
       chunkSize,
       withCredentials,
+      concurrentMax,
+      concurrentRetryMax,
 
       uploadAction,
       uploadData,
@@ -180,6 +198,7 @@ export const SliceUpload = defineComponent({
       onBeforeUploadChunk,
       onSuccessUploadChunk,
       onErrorUploadChunk,
+      onProgressUploadChunk,
 
       onBeforeMergeChunk,
       onSuccessMergeChunk,
@@ -190,6 +209,8 @@ export const SliceUpload = defineComponent({
     const { start } = useSliceUpload({
       chunkSize,
       withCredentials,
+      concurrentMax,
+      concurrentRetryMax,
 
       name,
       uploadAction,
@@ -213,6 +234,7 @@ export const SliceUpload = defineComponent({
       beforeUploadChunk: onBeforeUploadChunk,
       successUploadChunk: onSuccessUploadChunk,
       errorUploadChunk: onErrorUploadChunk,
+      progressUploadChunk: onProgressUploadChunk,
 
       // merge chunks hooks
       beforeMergeChunk: onBeforeMergeChunk,
