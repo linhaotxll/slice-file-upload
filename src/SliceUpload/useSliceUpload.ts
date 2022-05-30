@@ -20,7 +20,6 @@ import {
 } from './interface'
 import { FileHashToMain, FileHashToWorker } from './internal-interface'
 import {
-  forEach,
   Hooks,
   callWithErrorHandling,
   isFunction,
@@ -126,7 +125,7 @@ const createFormData = (name: string, chunk: Chunk, data?: Data) => {
   const fd = new FormData()
   fd.append(name, chunk.blob)
   if (data) {
-    forEach(Object.keys(data), key => {
+    Object.keys(data).forEach(key => {
       fd.append(key, data[key])
     })
   }
@@ -176,7 +175,6 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   let chunks: Chunk[] | undefined
   let fileHash: string | undefined
   let file: File | undefined
-  let resumeChunks: Chunk[] | undefined
 
   // 中断请求的列表
   let aborts: ((() => void) | undefined)[] | undefined
@@ -254,8 +252,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     file: File,
     fileHash: string,
     index: number,
-    chunk: Chunk,
-    abort: (cancel: () => void) => void
+    chunk: Chunk
   ) => {
     const method = uploadMethod
     const url = isFunction(uploadAction)
@@ -283,6 +280,8 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
       chunk,
     })
 
+    chunk.setUploading()
+
     try {
       const response = await request({
         url,
@@ -305,9 +304,13 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
           )
         },
         abort(cancel) {
-          abort(cancel)
+          // 根据索引记录每个请求的取消方法
+          aborts![index] = cancel
         },
       })
+
+      chunk.setSuccess(response)
+      aborts![index] = undefined
 
       callWithErrorHandling(successUploadChunk, Hooks.SUCCESS_UPLOAD_CHUNK, {
         file,
@@ -318,7 +321,9 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
       })
 
       return response
-    } catch (error) {
+    } catch (error: any) {
+      chunk.setError(error.type || Status.ERROR, error.response)
+
       callWithErrorHandling(errorUploadChunk, Hooks.ERROR_UPLOAD_CHUNK, {
         file,
         fileHash,
@@ -326,6 +331,8 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
         chunk,
         error,
       })
+
+      // 抛错
       throw error
     }
   }
@@ -336,19 +343,19 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   const startUpload = async (file: File, fileHash: string, chunks: Chunk[]) => {
     aborted = false
     aborts = []
-    resumeChunks = undefined
-    // 创建请求任务
-    const tasks = chunks.map(
-      (chunk, index) => () =>
-        createUploadChunkTask(file, fileHash, index, chunk, cancel => {
-          aborts![index] = cancel
-        })
-    )
+    // 对没有上传的切片创建请求任务
+    const tasks: (() => Promise<unknown>)[] = []
+    chunks.forEach((chunk, index) => {
+      if (chunk.isUnUpload()) {
+        tasks.push(() => createUploadChunkTask(file, fileHash, index, chunk))
+      }
+    })
 
     // 并发控制数量执行上传请求
     await concurrentRequest(tasks, {
       max: concurrentMax,
       retryCount: concurrentRetryMax,
+      // TODO: 更优雅的解决方案
       beforeRequest: () => !aborted,
     })
   }
@@ -359,25 +366,23 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
   const cancelUpload = () => {
     if (aborts) {
       aborted = true
-      forEach(aborts, (cancel, index) => {
+      aborts!.forEach(cancel => {
         if (cancel) {
           cancel()
-          resumeChunks = resumeChunks || []
-          resumeChunks[index] = chunks![index]
         }
-        cancel && cancel()
       })
+
       aborts = undefined
     }
-    console.log('resumeChunks: ', resumeChunks)
   }
 
   /**
    * 恢复上传
    */
   const resumeUpload = async () => {
-    if (file && resumeChunks) {
-      await startUpload(file, fileHash!, resumeChunks)
+    const isUnUpload = chunks!.find(chunk => chunk.isUnUpload())
+    if (file && isUnUpload) {
+      await uploadAndMerge(file, fileHash!, chunks!)
     }
   }
 
@@ -441,6 +446,17 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     file = uploadFile
     chunks = createChunks(uploadFile, chunkSize)
     fileHash = await createFileHash(uploadFile, chunks)
+    await uploadAndMerge(uploadFile, fileHash, chunks)
+  }
+
+  /**
+   * 上传、合并切片
+   */
+  const uploadAndMerge = async (
+    uploadFile: File,
+    fileHash: string,
+    chunks: Chunk[]
+  ) => {
     await startUpload(uploadFile, fileHash, chunks)
     await mergeChunks(uploadFile, fileHash)
   }

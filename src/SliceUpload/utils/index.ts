@@ -1,6 +1,5 @@
 export * from './hooks'
 export * from './merge'
-export * from './array'
 export * from './types'
 export * from './request'
 export * from './serialize'

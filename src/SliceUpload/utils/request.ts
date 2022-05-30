@@ -1,4 +1,4 @@
-import { forEach } from './array'
+import { Status } from '../interface'
 import { serializeForm } from './serialize'
 import { isFormData } from './types'
 
@@ -18,10 +18,6 @@ export interface RequestOptions {
     loaded: number,
     total: number
   ) => void
-  onObort?: (
-    this: XMLHttpRequest,
-    e: ProgressEvent<XMLHttpRequestEventTarget>
-  ) => void
   onTimeout?: (
     this: XMLHttpRequest,
     e: ProgressEvent<XMLHttpRequestEventTarget>
@@ -33,7 +29,7 @@ const setHeaders = (
   headers: RequestOptions['headers']
 ) => {
   if (headers) {
-    forEach(Object.keys(headers), key => {
+    Object.keys(headers).forEach(key => {
       xhr.setRequestHeader(key, headers[key])
     })
   }
@@ -51,7 +47,6 @@ export const request = <T = unknown>(options: RequestOptions) => {
       responseType = 'json',
       onUploadProgress,
       onTimeout,
-      onObort,
       abort,
     } = options
     const xhr = new XMLHttpRequest()
@@ -83,7 +78,7 @@ export const request = <T = unknown>(options: RequestOptions) => {
       if (status >= 200 && status < 400) {
         return resolve(this.response)
       }
-      reject(this.response)
+      reject({ type: Status.ERROR, response: this.response })
     })
 
     xhr.upload.addEventListener('progress', function (e) {
@@ -94,16 +89,15 @@ export const request = <T = unknown>(options: RequestOptions) => {
 
     xhr.addEventListener('timeout', function (e) {
       onTimeout?.call(this, e)
-      reject(e)
+      reject({ type: Status.TIMEOUT, e })
     })
 
     xhr.addEventListener('abort', function (e) {
-      onObort?.call(this, e)
-      reject(e)
+      reject({ type: Status.ABORT, e })
     })
 
     xhr.addEventListener('error', function (e) {
-      reject(e)
+      reject({ type: Status.ERROR, response: this.response })
     })
 
     xhr.send(resolveData)

@@ -145,4 +145,5 @@ export enum Status {
   ERROR = 'error',
   UPLOADING = 'uploading',
   ABORT = 'abort',
+  TIMEOUT = 'timeout',
 }
