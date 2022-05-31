@@ -1,32 +1,28 @@
+import { ref, shallowRef } from 'vue'
 import { Status } from '../interface'
 import { serializeForm } from './serialize'
 import { isFormData } from './types'
 
-export interface RequestOptions {
+export interface RequestOptions<T> {
   url: string
   method?: string
   withCredentials?: boolean
   headers?: Record<string, string>
   responseType?: XMLHttpRequestResponseType
   timeout?: number
-  data?: unknown
-
-  abort?: (cancel: () => void) => void
+  data?: T
+  immediate?: boolean
 
   onUploadProgress?: (
     this: XMLHttpRequestUpload,
     loaded: number,
     total: number
   ) => void
-  onTimeout?: (
-    this: XMLHttpRequest,
-    e: ProgressEvent<XMLHttpRequestEventTarget>
-  ) => void
 }
 
 const setHeaders = (
   xhr: XMLHttpRequest,
-  headers: RequestOptions['headers']
+  headers: RequestOptions<unknown>['headers']
 ) => {
   if (headers) {
     Object.keys(headers).forEach(key => {
@@ -35,71 +31,152 @@ const setHeaders = (
   }
 }
 
-export const request = <T = unknown>(options: RequestOptions) => {
-  return new Promise<T>((resolve, reject) => {
-    const {
-      withCredentials,
-      headers,
-      method = 'GET',
-      url,
-      data,
-      timeout,
-      responseType = 'json',
-      onUploadProgress,
-      onTimeout,
-      abort,
-    } = options
-    const xhr = new XMLHttpRequest()
+export class RequestError<T = unknown> extends Error {
+  constructor(
+    public message: string,
+    public code: string,
+    public response?: T
+  ) {
+    super(message)
+  }
+}
 
-    xhr.withCredentials = !!withCredentials
-    xhr.responseType = responseType
-    timeout && (xhr.timeout = timeout)
+export enum ErrorCode {
+  ERR_TIME_OUT = 'ERR_TIME_OUT',
+  ERR_BAD_RESPONSE = 'ERR_BAD_RESPONSE',
+  ERR_NETWORK = 'ERR_NETWORK',
+  ERR_ABORT = 'ERR_ABORT',
+}
 
-    let resolveData = data
-    if (isFormData(data) && headers) {
-      delete headers['Content-Type']
-    } else if (
-      (headers?.['Content-Type']?.indexOf('application/json') ?? -1) >= 0
-    ) {
-      resolveData = `${JSON.stringify(data)}`
-    } else {
-      resolveData = serializeForm(data)
-    }
+export const useRequest = <T extends Record<string, unknown>>(
+  options: RequestOptions<T>
+) => {
+  const {
+    withCredentials,
+    headers,
+    method = 'GET',
+    url,
+    data,
+    timeout,
+    responseType,
+    immediate = true,
+    onUploadProgress,
+  } = options
 
-    xhr.open(method.toUpperCase(), url)
-    setHeaders(xhr, headers)
+  const isFetching = ref<boolean>(false)
+  const isTimeout = ref<boolean>(false)
+  const isAbort = ref<boolean>(false)
+  const responseData = shallowRef<T | null>(null)
+  const error = shallowRef<unknown>(null)
+  let xhr: XMLHttpRequest | undefined
 
-    abort?.(() => {
-      xhr.abort()
-    })
+  const loading = (isLoading: boolean) => {
+    isFetching.value = isLoading ? true : isLoading
+  }
 
-    xhr.addEventListener('load', function () {
-      const status = this.status
-      if (status >= 200 && status < 400) {
-        return resolve(this.response)
+  const execute = () =>
+    new Promise<T>((resolve, reject) => {
+      const _reject = (e: unknown) => {
+        _complete()
+        error.value = e
+        reject(e)
       }
-      reject({ type: Status.ERROR, response: this.response })
-    })
 
-    xhr.upload.addEventListener('progress', function (e) {
-      if (e.lengthComputable) {
-        onUploadProgress?.call(this, e.loaded, e.total)
+      const _resolve = (data: T) => {
+        responseData.value = data
+        _complete()
+        resolve(data)
       }
+
+      const _complete = () => {
+        loading(false)
+      }
+
+      loading(true)
+
+      xhr = new XMLHttpRequest()
+
+      xhr.withCredentials = !!withCredentials
+      responseType && (xhr.responseType = responseType)
+      timeout && (xhr.timeout = timeout)
+
+      let resolveData: any = data
+
+      if (data) {
+        if (isFormData(data) && headers) {
+          delete headers['Content-Type']
+        } else if (
+          (headers?.['Content-Type']?.indexOf('application/json') ?? -1) >= 0
+        ) {
+          resolveData = `${JSON.stringify(data)}`
+        } else {
+          resolveData = serializeForm(data)
+        }
+      }
+
+      xhr.open(method.toUpperCase(), url)
+      setHeaders(xhr, headers)
+
+      xhr.addEventListener('load', function () {
+        const status = this.status
+        if (status >= 200 && status < 300) {
+          return _resolve(this.response)
+        }
+        _reject(
+          new RequestError(
+            `Request failed with status code ${this.status}`,
+            ErrorCode.ERR_BAD_RESPONSE,
+            this.response
+          )
+        )
+      })
+
+      xhr.upload.addEventListener('progress', function (e) {
+        if (e.lengthComputable) {
+          onUploadProgress?.call(this, e.loaded, e.total)
+        }
+      })
+
+      xhr.addEventListener('timeout', function (e) {
+        isTimeout.value = true
+        _reject(
+          new RequestError(
+            `${
+              timeout
+                ? 'timeout of ' + timeout + 'ms exceeded'
+                : 'timeout exceeded'
+            }`,
+            ErrorCode.ERR_TIME_OUT
+          )
+        )
+      })
+
+      xhr.addEventListener('abort', function (e) {
+        isAbort.value = true
+        _reject(new RequestError('Request aborted', ErrorCode.ERR_ABORT))
+      })
+
+      xhr.addEventListener('error', function (e) {
+        _reject(new RequestError('Network Error', ErrorCode.ERR_NETWORK))
+      })
+
+      xhr.send(resolveData!)
     })
 
-    xhr.addEventListener('timeout', function (e) {
-      onTimeout?.call(this, e)
-      reject({ type: Status.TIMEOUT, e })
-    })
+  const abort = () => {
+    xhr?.abort()
+  }
 
-    xhr.addEventListener('abort', function (e) {
-      reject({ type: Status.ABORT, e })
-    })
+  if (immediate) {
+    setTimeout(execute, 0)
+  }
 
-    xhr.addEventListener('error', function (e) {
-      reject({ type: Status.ERROR, response: this.response })
-    })
-
-    xhr.send(resolveData)
-  })
+  return {
+    responseData,
+    isFetching,
+    isTimeout,
+    isAbort,
+    abort,
+    execute,
+  }
 }

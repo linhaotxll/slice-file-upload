@@ -24,7 +24,7 @@ import {
   callWithErrorHandling,
   isFunction,
   merge,
-  request,
+  useRequest,
   callWithAsyncErrorHandling,
   concurrentRequest,
 } from './utils'
@@ -283,12 +283,14 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     chunk.setUploading()
 
     try {
-      const response = await request({
+      const { abort, execute } = useRequest({
+        immediate: false,
         url,
         data,
         method,
         withCredentials,
         headers: uploadHeaders,
+        responseType: 'json',
         onUploadProgress(loaded, total) {
           callWithErrorHandling(
             progressUploadChunk,
@@ -303,14 +305,12 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
             }
           )
         },
-        abort(cancel) {
-          // 根据索引记录每个请求的取消方法
-          aborts![index] = cancel
-        },
       })
+      aborts![index] = abort
+
+      const response = await execute()
 
       chunk.setSuccess(response)
-      aborts![index] = undefined
 
       callWithErrorHandling(successUploadChunk, Hooks.SUCCESS_UPLOAD_CHUNK, {
         file,
@@ -411,7 +411,8 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
     })
 
     try {
-      const response = await request({
+      const { execute } = useRequest({
+        immediate: false,
         url,
         method,
         data,
@@ -421,6 +422,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
           ...mergeHeaders,
         },
       })
+      const response = await execute()
 
       callWithErrorHandling(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
         file,
@@ -442,6 +444,7 @@ export const useSliceUpload = (options: SliceUploadOptions = {}) => {
    * 开始上传
    */
   const start = async (uploadFile: File) => {
+    // debugger
     // TODO: beforeUpload 校验文件
     file = uploadFile
     chunks = createChunks(uploadFile, chunkSize)
