@@ -3,14 +3,14 @@ import { Status } from '../interface'
 import { serializeForm } from './serialize'
 import { isFormData } from './types'
 
-export interface RequestOptions<T> {
+export interface RequestOptions {
   url: string
   method?: string
   withCredentials?: boolean
   headers?: Record<string, string>
   responseType?: XMLHttpRequestResponseType
   timeout?: number
-  data?: T
+  data?: Record<string, unknown>
   immediate?: boolean
 
   onUploadProgress?: (
@@ -22,7 +22,7 @@ export interface RequestOptions<T> {
 
 const setHeaders = (
   xhr: XMLHttpRequest,
-  headers: RequestOptions<unknown>['headers']
+  headers: RequestOptions['headers']
 ) => {
   if (headers) {
     Object.keys(headers).forEach(key => {
@@ -34,7 +34,7 @@ const setHeaders = (
 export class RequestError<T = unknown> extends Error {
   constructor(
     public message: string,
-    public code: string,
+    public code: ErrorCode,
     public response?: T
   ) {
     super(message)
@@ -48,9 +48,7 @@ export enum ErrorCode {
   ERR_ABORT = 'ERR_ABORT',
 }
 
-export const useRequest = <T extends Record<string, unknown>>(
-  options: RequestOptions<T>
-) => {
+export const useRequest = <T>(options: RequestOptions) => {
   const {
     withCredentials,
     headers,
@@ -103,8 +101,10 @@ export const useRequest = <T extends Record<string, unknown>>(
       let resolveData: any = data
 
       if (data) {
-        if (isFormData(data) && headers) {
-          delete headers['Content-Type']
+        if (isFormData(data)) {
+          if (headers) {
+            delete headers['Content-Type']
+          }
         } else if (
           (headers?.['Content-Type']?.indexOf('application/json') ?? -1) >= 0
         ) {
@@ -122,6 +122,7 @@ export const useRequest = <T extends Record<string, unknown>>(
         if (status >= 200 && status < 300) {
           return _resolve(this.response)
         }
+        console.log('res: ', this)
         _reject(
           new RequestError(
             `Request failed with status code ${this.status}`,

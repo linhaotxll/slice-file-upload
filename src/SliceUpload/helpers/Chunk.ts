@@ -1,11 +1,11 @@
 import { Status } from '../interface'
 
 export class Chunk {
-  public status: Status = Status.PENDING
   public response: unknown = null
   public error: unknown = null
+  public progress = 0
 
-  constructor(public blob: Blob) {}
+  constructor(public blob: Blob, public status: Status = Status.PENDING) {}
 
   public isUnUpload() {
     return this.status === Status.PENDING || this.status === Status.ABORT

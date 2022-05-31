@@ -84,6 +84,23 @@ export type ProgressUploadChunk = (params: {
 }) => void
 
 /**
+ * custom upload request
+ */
+export type CustomUploadRequest<T = unknown> = (params: {
+  url: string | undefined
+  data: Data
+  headers: Data | undefined
+  method: string
+  file: File
+  fileHash: string
+  chunk: Chunk
+  index: number
+  onSuccess: (response: T) => void
+  onError: (error: any) => void
+  onProgress: (loaded: number, total: number) => void
+}) => Promise<T>
+
+/**
  * before merge chunk hook
  */
 export type BeforeMergeChunk = (params: {

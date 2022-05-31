@@ -16,6 +16,8 @@ export enum Hooks {
   UPLOAD_DATA = 'ud',
   MERGE_ACTION = 'ma',
   MERGE_DATA = 'md',
+  CUSTOM_UPLOAD_CHUNK = 'cuc',
+  CUSTOM_MERGE_CHUNK = 'cmc',
 }
 
 export const ErrorTypeString: Record<Hooks, string> = {
@@ -34,16 +36,18 @@ export const ErrorTypeString: Record<Hooks, string> = {
   [Hooks.UPLOAD_DATA]: 'upload data',
   [Hooks.MERGE_ACTION]: 'merge action',
   [Hooks.MERGE_DATA]: 'merge data',
+  [Hooks.CUSTOM_UPLOAD_CHUNK]: 'custom upload chunk',
+  [Hooks.CUSTOM_MERGE_CHUNK]: 'custom merge chunk',
 }
 
 export const callWithErrorHandling = <T extends (...args: any) => any>(
-  fn: T,
+  fn: T | undefined,
   errorType: Hooks,
   ...args: Parameters<T>
 ) => {
   let res
   try {
-    res = fn(...(args as any[]))
+    res = fn?.(...(args as any[]))
   } catch (e) {
     handleError(e, errorType)
   }
@@ -66,14 +70,10 @@ export const callWithAsyncErrorHandling = async <
   return new Promise((resolve, reject) => {
     const result = callWithErrorHandling(fn, errorType, ...args)
     if (isPromise(result)) {
-      result
-        .then(res => {
-          resolve(res)
-        })
-        .catch(e => {
-          handleError(e, errorType)
-          reject(e)
-        })
+      result.then(resolve).catch(e => {
+        handleError(e, errorType)
+        reject(e)
+      })
     } else {
       resolve(result)
     }
