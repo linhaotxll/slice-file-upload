@@ -1,5 +1,4 @@
 import { ref, shallowRef } from 'vue'
-import { Status } from '../interface'
 import { serializeForm } from './serialize'
 import { isFormData } from './types'
 
@@ -10,7 +9,7 @@ export interface RequestOptions {
   headers?: Record<string, string>
   responseType?: XMLHttpRequestResponseType
   timeout?: number
-  data?: Record<string, unknown>
+  data?: Record<string, unknown> | FormData
   immediate?: boolean
 
   onUploadProgress?: (
@@ -98,10 +97,11 @@ export const useRequest = <T>(options: RequestOptions) => {
       responseType && (xhr.responseType = responseType)
       timeout && (xhr.timeout = timeout)
 
-      let resolveData: any = data
+      let resolveData: string | FormData | null = null
 
       if (data) {
         if (isFormData(data)) {
+          resolveData = data
           if (headers) {
             delete headers['Content-Type']
           }
@@ -122,7 +122,6 @@ export const useRequest = <T>(options: RequestOptions) => {
         if (status >= 200 && status < 300) {
           return _resolve(this.response)
         }
-        console.log('res: ', this)
         _reject(
           new RequestError(
             `Request failed with status code ${this.status}`,
@@ -138,7 +137,7 @@ export const useRequest = <T>(options: RequestOptions) => {
         }
       })
 
-      xhr.addEventListener('timeout', function (e) {
+      xhr.addEventListener('timeout', function () {
         isTimeout.value = true
         _reject(
           new RequestError(
@@ -152,16 +151,16 @@ export const useRequest = <T>(options: RequestOptions) => {
         )
       })
 
-      xhr.addEventListener('abort', function (e) {
+      xhr.addEventListener('abort', function () {
         isAbort.value = true
         _reject(new RequestError('Request aborted', ErrorCode.ERR_ABORT))
       })
 
-      xhr.addEventListener('error', function (e) {
+      xhr.addEventListener('error', function () {
         _reject(new RequestError('Network Error', ErrorCode.ERR_NETWORK))
       })
 
-      xhr.send(resolveData!)
+      xhr.send(resolveData)
     })
 
   const abort = () => {

@@ -1,11 +1,8 @@
 import { ref, toRaw } from 'vue'
 import type { Ref } from 'vue'
 import { Chunk } from './helpers'
-import {
-  BeforeFileHash,
-  ErrorFileHash,
-  SuccessFileHash,
-  ChangeFileHash,
+import { Status } from './interface'
+import type {
   UploadAction,
   UploadData,
   Data,
@@ -18,10 +15,19 @@ import {
   SuccessMergeChunk,
   ErrorMergeChunk,
   ProgressUploadChunk,
-  Status,
   CustomUploadRequest,
+  CustomMergeRequest,
+  BeforeFileHash,
+  ProcessFileHash,
+  SuccessFileHash,
+  ErrorFileHash,
 } from './interface'
-import { FileHashToMain, FileHashToWorker } from './internal-interface'
+import type {
+  FileHashToMain,
+  FileHashToWorker,
+  InternalCustomUploadRequest,
+  InternalMergeUploadRequest,
+} from './internal-interface'
 import {
   Hooks,
   callWithErrorHandling,
@@ -41,14 +47,10 @@ export interface SliceUploadOptions<T, R> {
   concurrentRetryMax?: number
 
   /**
-   * ========== hooks ==========
-   */
-
-  /**
    * ========== hask hooks ==========
    */
   beforeFileHash?: BeforeFileHash
-  changeFileHash?: ChangeFileHash
+  progressFileHash?: ProcessFileHash
   successFileHash?: SuccessFileHash
   errorFileHash?: ErrorFileHash
 
@@ -82,6 +84,7 @@ export interface SliceUploadOptions<T, R> {
   mergeData?: MergeData
   mergeHeaders?: Data
   mergeMethod?: string
+  customMergeRequest?: CustomMergeRequest<R>
 }
 
 export type MergeSliceUploadOptions<T, R> = Required<
@@ -107,35 +110,13 @@ const defaultOptions: MergeSliceUploadOptions<unknown, unknown> = {
   concurrentMax: 5,
   concurrentRetryMax: 2,
 
-  // beforeFileHash: noop,
-  // changeFileHash: noop,
-  // successFileHash: noop,
-  // errorFileHash: noop,
-
-  // beforeUploadChunk: noop,
-  // successUploadChunk: noop,
-  // errorUploadChunk: noop,
-  // progressUploadChunk: noop,
-  // customUploadRequest: noop,
-
-  // beforeMergeChunk: noop,
-  // successMergeChunk: noop,
-  // errorMergeChunk: noop,
-
   name: 'file',
-  mergeName: 'fileHash',
-
-  withCredentials: false,
-
-  // uploadAction: '',
-  // uploadData: {},
-  // uploadHeaders: {},
   uploadMethod: 'post',
 
-  // mergeAction: '',
-  // mergeData: {},
-  // mergeHeaders: {},
+  mergeName: 'fileHash',
   mergeMethod: 'post',
+
+  withCredentials: false,
 }
 
 const Error2StatusMap: Record<ErrorCode, Status> = {
@@ -188,7 +169,7 @@ export const useSliceUpload = <T, R>(
 
     beforeFileHash,
     successFileHash,
-    changeFileHash,
+    progressFileHash,
     errorFileHash,
 
     beforeUploadChunk,
@@ -200,12 +181,22 @@ export const useSliceUpload = <T, R>(
     beforeMergeChunk,
     successMergeChunk,
     errorMergeChunk,
+    customMergeRequest,
   } = merge({}, defaultOptions, options) as MergeSliceUploadOptions<T, R>
 
-  // 切片列表
   const chunks = ref<Chunk[]>([])
-  const fileHash = ref<string>('')
+
+  // file hash
+  const fileHash = ref<string | undefined>()
+  const fileHashLoading = ref<boolean>(false)
+  const fileHashProgress = ref<number>(0)
+  const fileHashError = ref<unknown>(null)
+
+  // upload chunk
   const uploading = ref<boolean>(false)
+
+  // merge chunk
+  const mergeLoading = ref<boolean>(false)
   let file: File | undefined
 
   // 中断请求的列表
@@ -232,6 +223,8 @@ export const useSliceUpload = <T, R>(
    */
   const createFileHash = async (file: File, chunks: Chunk[]) => {
     return new Promise<string>((resolve, reject) => {
+      fileHashLoading.value = true
+
       // before filehash hook
       callWithErrorHandling(
         beforeFileHash,
@@ -244,8 +237,10 @@ export const useSliceUpload = <T, R>(
       worker.addEventListener('message', e => {
         const { fileHash, progress, index, done } = e.data as FileHashToMain
 
+        fileHashProgress.value = progress
+
         // change filehash hook
-        callWithErrorHandling(changeFileHash, Hooks.CHANGE_FILE_HASH, {
+        callWithErrorHandling(progressFileHash, Hooks.CHANGE_FILE_HASH, {
           file,
           progress,
           index,
@@ -253,6 +248,7 @@ export const useSliceUpload = <T, R>(
         })
 
         if (done) {
+          fileHashLoading.value = false
           callWithErrorHandling(successFileHash, Hooks.SUCCESS_FILE_HASH, {
             fileHash: fileHash!,
             file,
@@ -263,6 +259,8 @@ export const useSliceUpload = <T, R>(
       })
 
       worker.addEventListener('messageerror', error => {
+        fileHashLoading.value = false
+        fileHashError.value = error
         // TODO:
         callWithErrorHandling(errorFileHash, Hooks.ERROR_FILE_HASH, {
           file,
@@ -353,57 +351,45 @@ export const useSliceUpload = <T, R>(
       })
     }
 
+    const onAbort = (abort: () => void) => {
+      if (aborts) {
+        aborts[index] = abort
+      }
+    }
+
+    const params: InternalCustomUploadRequest<T> = {
+      url,
+      data,
+      file,
+      fileHash,
+      chunk,
+      index,
+      headers: uploadHeaders,
+      method,
+      onSuccess,
+      onError,
+      onProgress,
+      onBefore,
+      onAbort,
+    }
+
     if (isFunction(customUploadRequest)) {
-      return await _createCustomUploadChunkTask({
-        url,
-        data,
-        file,
-        fileHash,
-        chunk,
-        index,
-        headers: uploadHeaders,
-        method,
-        onSuccess,
-        onError,
-        onProgress,
-        onBefore,
-      })
+      return await _createCustomUploadChunkTask(params)
     }
 
     if (!url) {
       throw new Error('missing upload url')
     }
 
-    return await _createDefaultUploadChunkTask({
-      url,
-      data,
-      index,
-      headers: uploadHeaders,
-      method,
-      onError,
-      onProgress,
-      onSuccess,
-      onBefore,
-    })
+    return await _createDefaultUploadChunkTask(params)
   }
 
   /**
    * 创建切片的上传任务 - 自定义
    */
-  const _createCustomUploadChunkTask = async (params: {
-    url: string | undefined
-    data: Data
-    headers: Data | undefined
-    method: string
-    file: File
-    fileHash: string
-    chunk: Chunk
-    index: number
-    onBefore: () => void
-    onSuccess: (response: T) => void
-    onError: (error: any) => void
-    onProgress: (loaded: number, total: number) => void
-  }) => {
+  const _createCustomUploadChunkTask = async (
+    params: InternalCustomUploadRequest<T>
+  ) => {
     params.onBefore()
 
     return await callWithAsyncErrorHandling(
@@ -416,34 +402,26 @@ export const useSliceUpload = <T, R>(
   /**
    * 创建切片的上传任务 - 默认
    */
-  const _createDefaultUploadChunkTask = async (params: {
-    url: string
-    data: Data
-    headers: Data | undefined
-    method: string
-    index: number
-    onBefore: () => void
-    onSuccess: (response: T) => void
-    onError: (error: any) => void
-    onProgress: (loaded: number, total: number) => void
-  }) => {
+  const _createDefaultUploadChunkTask = async (
+    params: InternalCustomUploadRequest<T>
+  ) => {
     const {
       url,
       data,
       headers,
       method,
-      index,
       onBefore,
       onError,
       onProgress,
       onSuccess,
+      onAbort,
     } = params
     onBefore()
 
     try {
       const { abort, execute } = useRequest<T>({
         immediate: false,
-        url,
+        url: url!,
         data,
         method,
         withCredentials,
@@ -454,7 +432,7 @@ export const useSliceUpload = <T, R>(
         },
       })
 
-      aborts![index] = abort
+      onAbort(abort)
 
       const response = await execute()
 
@@ -514,7 +492,7 @@ export const useSliceUpload = <T, R>(
   const resumeUpload = async () => {
     const isUnUpload = chunks.value!.find(chunk => chunk.isUnUpload())
     if (file && isUnUpload) {
-      await uploadAndMerge(file, fileHash!, chunks!)
+      await uploadAndMerge(file, fileHash.value!, chunks!)
     }
   }
 
@@ -530,10 +508,6 @@ export const useSliceUpload = <T, R>(
         })
       : mergeAction
 
-    if (!url) {
-      throw new Error('missing merge url')
-    }
-
     const data = isFunction(mergeData)
       ? await callWithAsyncErrorHandling(mergeData, Hooks.MERGE_DATA, {
           file,
@@ -541,15 +515,76 @@ export const useSliceUpload = <T, R>(
         })
       : createMergeParams(fileHash, mergeName, mergeData)
 
-    callWithErrorHandling(beforeMergeChunk, Hooks.BEFORE_MERGE_CHUNK, {
+    const onBefore = () => {
+      callWithErrorHandling(beforeMergeChunk, Hooks.BEFORE_MERGE_CHUNK, {
+        file,
+        fileHash,
+      })
+    }
+
+    const onSuccess = (response: R) => {
+      callWithErrorHandling(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
+        file,
+        fileHash,
+        response,
+      })
+    }
+
+    const onError = (error: unknown) => {
+      callWithErrorHandling(errorMergeChunk, Hooks.ERROR_MERGE_CHUNK, {
+        file,
+        fileHash,
+        error,
+      })
+    }
+
+    const params: InternalMergeUploadRequest<R> = {
+      url,
+      method,
+      headers: mergeHeaders,
       file,
       fileHash,
-    })
+      data,
+      onSuccess,
+      onError,
+      onBefore,
+    }
 
+    if (isFunction(customMergeRequest)) {
+      return await _mergeChunksCustom(params)
+    }
+
+    if (!url) {
+      throw new Error('missing merge url')
+    }
+
+    return await _mergeChunksDefault(params)
+  }
+
+  /**
+   * 合并切片 - 自定义
+   */
+  const _mergeChunksCustom = async (params: InternalMergeUploadRequest<R>) => {
+    params.onBefore()
+
+    return await callWithAsyncErrorHandling(
+      customMergeRequest!,
+      Hooks.CUSTOM_UPLOAD_CHUNK,
+      params
+    )
+  }
+
+  /**
+   * 合并切片 - 默认
+   */
+  const _mergeChunksDefault = async (params: InternalMergeUploadRequest<R>) => {
+    const { url, method, data, onBefore, onError, onSuccess } = params
     try {
-      const { execute } = useRequest({
+      onBefore()
+
+      const { execute } = useRequest<R>({
         immediate: false,
-        url,
+        url: url!,
         method,
         data,
         withCredentials,
@@ -560,19 +595,11 @@ export const useSliceUpload = <T, R>(
       })
       const response = await execute()
 
-      callWithErrorHandling(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
-        file,
-        fileHash,
-        response,
-      })
+      onSuccess(response)
 
       return response
     } catch (error) {
-      callWithErrorHandling(errorMergeChunk, Hooks.ERROR_MERGE_CHUNK, {
-        file,
-        fileHash,
-        error,
-      })
+      onError(error)
     }
   }
 
@@ -580,11 +607,10 @@ export const useSliceUpload = <T, R>(
    * 开始上传
    */
   const start = async (uploadFile: File) => {
-    // TODO: beforeUpload 校验文件
     file = uploadFile
     chunks.value = createChunks(uploadFile, chunkSize)
     fileHash.value = await createFileHash(uploadFile, chunks.value)
-    await uploadAndMerge(uploadFile, fileHash, chunks)
+    await uploadAndMerge(uploadFile, fileHash.value, chunks)
   }
 
   /**
@@ -592,19 +618,23 @@ export const useSliceUpload = <T, R>(
    */
   const uploadAndMerge = async (
     uploadFile: File,
-    fileHash: Ref<string>,
+    fileHash: string,
     chunks: Ref<Chunk[]>
   ) => {
-    await startUpload(uploadFile, fileHash.value, chunks.value)
-    await mergeChunks(uploadFile, fileHash.value)
+    await startUpload(uploadFile, fileHash, chunks.value)
+    await mergeChunks(uploadFile, fileHash)
   }
 
   return {
     uploading,
+    mergeLoading,
     start,
     cancel: cancelUpload,
     resume: resumeUpload,
     chunks,
     fileHash,
+    fileHashLoading,
+    fileHashProgress,
+    fileHashError,
   }
 }

@@ -3,9 +3,8 @@ import type { PropType } from 'vue'
 import type {
   BeforeFileHash,
   BeforeMergeChunk,
-  BeforeUpload,
   BeforeUploadChunk,
-  ChangeFileHash,
+  ProcessFileHash,
   Data,
   ErrorFileHash,
   ErrorMergeChunk,
@@ -43,12 +42,6 @@ const props = {
    * 并发上传切片失败的重试次数
    */
   concurrentRetryMax: Number as PropType<number>,
-
-  /**
-   * 上传文件前的钩子，若返回 false 则停止上传
-   * 支持返回 Promise，reject 停止，resolve 继续
-   */
-  beforeUpload: Function as PropType<BeforeUpload>,
 
   /**
    * 上传切片的地址
@@ -125,7 +118,7 @@ const props = {
   /**
    * 计算 hash 改变的钩子
    */
-  onChangeFileHash: Function as PropType<ChangeFileHash>,
+  onProgressFileHash: Function as PropType<ProcessFileHash>,
 
   /**
    * 开始上传切片的钩子
@@ -193,7 +186,7 @@ export const SliceUpload = defineComponent({
       onBeforeFileHash,
       onSuccessFileHash,
       onErrorFileHash,
-      onChangeFileHash,
+      onProgressFileHash,
 
       onBeforeUploadChunk,
       onSuccessUploadChunk,
@@ -228,7 +221,7 @@ export const SliceUpload = defineComponent({
       beforeFileHash: onBeforeFileHash,
       successFileHash: onSuccessFileHash,
       errorFileHash: onErrorFileHash,
-      changeFileHash: onChangeFileHash,
+      progressFileHash: onProgressFileHash,
 
       // upload chunks hooks
       beforeUploadChunk: onBeforeUploadChunk,

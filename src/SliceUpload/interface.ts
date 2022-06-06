@@ -1,4 +1,5 @@
 import { Chunk } from './helpers'
+import { RequestError } from './utils'
 
 export type Data = Record<string, any>
 
@@ -14,7 +15,7 @@ export type BeforeFileHash = (file: File, chunks: Chunk[]) => void
 /**
  * change hash hook
  */
-export type ChangeFileHash = (params: {
+export type ProcessFileHash = (params: {
   file: File
   progress: number
   index: number
@@ -86,7 +87,7 @@ export type ProgressUploadChunk = (params: {
 /**
  * custom upload request
  */
-export type CustomUploadRequest<T = unknown> = (params: {
+export interface CustomUploadRequestOptions<T = unknown> {
   url: string | undefined
   data: Data
   headers: Data | undefined
@@ -96,9 +97,13 @@ export type CustomUploadRequest<T = unknown> = (params: {
   chunk: Chunk
   index: number
   onSuccess: (response: T) => void
-  onError: (error: any) => void
+  onError: (error: RequestError) => void
   onProgress: (loaded: number, total: number) => void
-}) => Promise<T>
+  onAbort: (abort: () => void) => void
+}
+export type CustomUploadRequest<T = unknown> = (
+  options: CustomUploadRequestOptions<T>
+) => Promise<T>
 
 /**
  * before merge chunk hook
@@ -126,7 +131,22 @@ export type ErrorMergeChunk = <T = any>(params: {
   error: T
 }) => void
 
-export type BeforeUpload = (file: File) => boolean | Promise<boolean>
+/**
+ * custom upload request
+ */
+export interface CustomMergeRequestOptions<R = unknown> {
+  url: string | undefined
+  data: Data
+  headers: Data | undefined
+  method: string
+  file: File
+  fileHash: string
+  onSuccess: (response: R) => void
+  onError: (error: any) => void
+}
+export type CustomMergeRequest<R = unknown> = (
+  params: CustomMergeRequestOptions<R>
+) => Promise<R>
 
 // upload
 export type UploadAction =
