@@ -10,5 +10,11 @@
 	"*.tsx": [
 		"prettier --write",
 		"eslint --fix"
+	],
+	"*.json": [
+		"eslint --fix"
+	],
+	"*.html": [
+		"prettier --write"
 	]
 }
