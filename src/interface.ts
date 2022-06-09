@@ -1,7 +1,7 @@
 import { Chunk } from './helpers'
 import { RequestError } from './utils'
 
-export type Data = Record<string, any>
+export type Data = Record<string, unknown>
 
 /**
  * hooks
@@ -89,7 +89,7 @@ export type ProgressUploadChunk = (params: {
  */
 export interface CustomUploadRequestOptions<T = unknown> {
   url: string | undefined
-  data: Data
+  data: Data | FormData
   headers: Data | undefined
   method: string
   file: File

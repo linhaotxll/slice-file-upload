@@ -1,4 +1,5 @@
 import { ref, shallowRef } from 'vue'
+import { Data } from '../interface'
 import { serializeForm } from './serialize'
 import { isFormData } from './types'
 
@@ -6,7 +7,7 @@ export interface RequestOptions {
   url: string
   method?: string
   withCredentials?: boolean
-  headers?: Record<string, string>
+  headers?: Data
   responseType?: XMLHttpRequestResponseType
   timeout?: number
   data?: Record<string, unknown> | FormData
@@ -25,7 +26,7 @@ const setHeaders = (
 ) => {
   if (headers) {
     Object.keys(headers).forEach(key => {
-      xhr.setRequestHeader(key, headers[key])
+      xhr.setRequestHeader(key, headers[key] as string)
     })
   }
 }
@@ -106,7 +107,8 @@ export const useRequest = <T>(options: RequestOptions) => {
             delete headers['Content-Type']
           }
         } else if (
-          (headers?.['Content-Type']?.indexOf('application/json') ?? -1) >= 0
+          ((headers?.['Content-Type'] as string)?.indexOf('application/json') ??
+            -1) >= 0
         ) {
           resolveData = `${JSON.stringify(data)}`
         } else {

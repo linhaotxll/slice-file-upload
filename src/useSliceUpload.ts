@@ -131,7 +131,7 @@ const createFormData = (name: string, chunk: Chunk, data?: Data) => {
   fd.append(name, chunk.blob)
   if (data) {
     Object.keys(data).forEach(key => {
-      fd.append(key, data[key])
+      fd.append(key, data[key] as string | Blob)
     })
   }
   return fd

@@ -4,7 +4,7 @@ export interface ConcurrentRequestOptions {
   beforeRequest?: () => boolean
 }
 
-export type Request = (...args: any[]) => Promise<unknown>
+export type Request = (...args: unknown[]) => Promise<unknown>
 
 const defaultOptions: Required<ConcurrentRequestOptions> = {
   max: 5,

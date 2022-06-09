@@ -1,4 +1,4 @@
-const hasOwn = (prop: PropertyKey, obj: any) =>
+const hasOwn = (prop: PropertyKey, obj: object) =>
   Object.prototype.hasOwnProperty.call(obj, prop)
 
 export function merge<T, S1>(target: T, source1: S1): T & S1
@@ -13,7 +13,10 @@ export function merge<T, S1, S2, S3>(
   source2: S2,
   source3: S3
 ): T & S1 & S2 & S3
-export function merge(target: any, ...sources: any[]) {
+export function merge(
+  target: Record<string, unknown>,
+  ...sources: Record<string, unknown>[]
+) {
   let index = -1
   let sourceIndex = -1
   while (++index < sources.length) {
