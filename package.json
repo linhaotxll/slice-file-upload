@@ -1,6 +1,20 @@
 {
   "name": "slice-file-upload",
   "version": "1.0.0",
+  "description": "A Vue3 component. Large File Slice Upload",
+  "keywords": [
+    "Vue3",
+    "Slice Upload"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/linhaotxl/slice-upload.git"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "homepage": "https://github.com/linhaotxl/slice-upload",
   "scripts": {
     "dev": "vite",
     "clean": "rimraf dist",
@@ -34,6 +48,9 @@
     "vite-plugin-eslint": "^1.6.1",
     "vue": "^3.2.37",
     "vue-tsc": "^0.34.7"
+  },
+  "peerDependencies": {
+    "vue": "^3.0.0"
   },
   "config": {
     "commitizen": {
