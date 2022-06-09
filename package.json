@@ -39,5 +39,10 @@
     "commitizen": {
       "path": "./node_modules/cz-customizable"
     }
+  },
+  "exports": {
+    ".": {
+      "default": "./dist/index.es.js"
+    }
   }
 }
