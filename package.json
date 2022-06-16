@@ -14,12 +14,12 @@
     "dist",
     "README.md"
   ],
+  "types": "./dist/index.d.ts",
   "homepage": "https://github.com/linhaotxl/slice-upload",
   "scripts": {
     "dev": "vite",
     "clean": "rimraf dist",
-    "build": "pnpm run clean && tsc -b --force tsconfig.esm.json",
-    "build:package": "pnpm run clean && vite build",
+    "build": "pnpm run clean && vite build",
     "preview": "vite preview",
     "prepare": "husky install",
     "lint-staged": "npm run lint-staged --allow-empty"

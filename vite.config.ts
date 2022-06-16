@@ -17,7 +17,7 @@ const config: UserConfigFn = async ({ command }) => {
     plugins.push(
       (await import('vite-plugin-dts')).default({
         tsConfigFilePath: path.resolve(process.cwd(), 'tsconfig.json'),
-        // include: path.resolve(process.cwd(), 'src/useSliceUpload.ts')
+        exclude: ['./src/utils', './src/internal-interface.ts'],
       })
     )
   }
@@ -40,11 +40,12 @@ const config: UserConfigFn = async ({ command }) => {
         name: 'slice-upload',
         formats: ['es'],
       },
-      sourcemap: true,
+      sourcemap: false,
       rollupOptions: {
         output: {
           dir: path.resolve(process.cwd(), 'dist'),
         },
+        external: ['vue'],
       },
     },
   }

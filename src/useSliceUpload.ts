@@ -39,7 +39,7 @@ import {
   ErrorCode,
   RequestError,
 } from './utils'
-import FileHashWorker from './worker.js?worker'
+import FileHashWorker from './worker.js?worker&inline'
 
 export interface SliceUploadOptions<T, R> {
   chunkSize?: number
@@ -191,6 +191,8 @@ export const useSliceUpload = <T, R>(
   const fileHashLoading = ref<boolean>(false)
   const fileHashProgress = ref<number>(0)
   const fileHashError = ref<unknown>(null)
+  const mergeResponse = ref<R>()
+  const mergeError = ref<unknown>(null)
 
   // upload chunk
   const uploading = ref<boolean>(false)
@@ -471,32 +473,6 @@ export const useSliceUpload = <T, R>(
   }
 
   /**
-   * 取消上传
-   */
-  const cancelUpload = () => {
-    if (aborts) {
-      aborted = true
-      aborts!.forEach(cancel => {
-        if (cancel) {
-          cancel()
-        }
-      })
-
-      aborts = undefined
-    }
-  }
-
-  /**
-   * 恢复上传
-   */
-  const resumeUpload = async () => {
-    const isUnUpload = chunks.value!.find(chunk => chunk.isUnUpload())
-    if (file && isUnUpload) {
-      await uploadAndMerge(file, fileHash.value!, chunks!)
-    }
-  }
-
-  /**
    * 合并切片
    */
   const mergeChunks = async (file: File, fileHash: string) => {
@@ -516,6 +492,7 @@ export const useSliceUpload = <T, R>(
       : createMergeParams(fileHash, mergeName, mergeData)
 
     const onBefore = () => {
+      mergeLoading.value = true
       callWithErrorHandling(beforeMergeChunk, Hooks.BEFORE_MERGE_CHUNK, {
         file,
         fileHash,
@@ -523,6 +500,8 @@ export const useSliceUpload = <T, R>(
     }
 
     const onSuccess = (response: R) => {
+      mergeResponse.value = response
+      mergeLoading.value = false
       callWithErrorHandling(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
         file,
         fileHash,
@@ -531,6 +510,8 @@ export const useSliceUpload = <T, R>(
     }
 
     const onError = (error: unknown) => {
+      mergeError.value = error
+      mergeLoading.value = false
       callWithErrorHandling(errorMergeChunk, Hooks.ERROR_MERGE_CHUNK, {
         file,
         fileHash,
@@ -608,9 +589,48 @@ export const useSliceUpload = <T, R>(
    */
   const start = async (uploadFile: File) => {
     file = uploadFile
-    chunks.value = createChunks(uploadFile, chunkSize)
-    fileHash.value = await createFileHash(uploadFile, chunks.value)
-    await uploadAndMerge(uploadFile, fileHash.value, chunks)
+    toggleUpload(async () => {
+      chunks.value = createChunks(uploadFile, chunkSize)
+      fileHash.value = await createFileHash(uploadFile, chunks.value)
+      await uploadAndMerge(uploadFile, fileHash.value, chunks)
+    })
+  }
+
+  /**
+   * 取消上传
+   */
+  const cancelUpload = () => {
+    if (aborts) {
+      aborted = true
+      aborts!.forEach(cancel => {
+        if (cancel) {
+          cancel()
+        }
+      })
+
+      aborts = undefined
+    }
+  }
+
+  /**
+   * 恢复上传
+   */
+  const resumeUpload = async () => {
+    const isUnUpload = chunks.value!.find(chunk => chunk.isUnUpload())
+    if (file && isUnUpload) {
+      toggleUpload(async () => {
+        await uploadAndMerge(file!, fileHash.value!, chunks!)
+      })
+    }
+  }
+
+  /**
+   * 切换 uploading 状态
+   */
+  const toggleUpload = async (fn: (...args: unknown[]) => void) => {
+    uploading.value = true
+    await fn()
+    uploading.value = false
   }
 
   /**
@@ -627,14 +647,16 @@ export const useSliceUpload = <T, R>(
 
   return {
     uploading,
-    mergeLoading,
-    start,
-    cancel: cancelUpload,
-    resume: resumeUpload,
     chunks,
     fileHash,
     fileHashLoading,
     fileHashProgress,
     fileHashError,
+    mergeLoading,
+    mergeResponse,
+    mergeError,
+    start,
+    cancel: cancelUpload,
+    resume: resumeUpload,
   }
 }

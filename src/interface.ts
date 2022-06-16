@@ -160,12 +160,13 @@ export type UploadAction =
 
 export type UploadData =
   | Data
+  | FormData
   | ((params: {
       file: File
       chunk: Chunk
       index: number
       fileHash: string
-    }) => Data | Promise<Data>)
+    }) => Data | FormData | Promise<Data | FormData>)
 
 // merge
 export type MergeAction =
