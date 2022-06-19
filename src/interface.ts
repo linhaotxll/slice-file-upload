@@ -1,3 +1,4 @@
+import { Ref } from 'vue'
 import { Chunk } from './helpers'
 import { RequestError } from './utils'
 
@@ -64,12 +65,12 @@ export type SuccessUploadChunk = <T = any>(params: {
 /**
  * error upload chunk hook
  */
-export type ErrorUploadChunk = <T = unknown>(params: {
+export type ErrorUploadChunk = (params: {
   file: File
   fileHash: string
   index: number
   chunk: Chunk
-  error: T
+  error: unknown
 }) => void
 
 /**
@@ -103,7 +104,7 @@ export interface CustomUploadRequestOptions<T = unknown> {
 }
 export type CustomUploadRequest<T = unknown> = (
   options: CustomUploadRequestOptions<T>
-) => Promise<T>
+) => void
 
 /**
  * before merge chunk hook
@@ -146,7 +147,7 @@ export interface CustomMergeRequestOptions<R = unknown> {
 }
 export type CustomMergeRequest<R = unknown> = (
   params: CustomMergeRequestOptions<R>
-) => Promise<R>
+) => void
 
 // upload
 export type UploadAction =
@@ -185,3 +186,229 @@ export enum Status {
   ABORT = 'abort',
   TIMEOUT = 'timeout',
 }
+
+/**
+ * Return
+ */
+export interface SliceFileUploadReturn<R> {
+  /**
+   * 是否正在上传，包括：计算 hash、上传切片、合并切片
+   */
+  uploading: Ref<boolean>
+
+  /**
+   * 切片列表
+   */
+  chunks: Ref<Chunk[]>
+
+  /**
+   * 文件 hash
+   */
+  fileHash: Ref<string | undefined>
+
+  /**
+   * 是否正在计算文件 hash
+   */
+  fileHashLoading: Ref<boolean>
+
+  /**
+   * 计算文件 hash 的进度
+   */
+  fileHashProgress: Ref<number>
+
+  /**
+   * 计算文件 hash 错误信息
+   */
+  fileHashError: Ref<unknown>
+
+  /**
+   * 是否正在合并切片
+   */
+  mergeLoading: Ref<boolean>
+
+  /**
+   * 合并切片的响应数据
+   */
+  mergeResponse: Ref<R | undefined>
+
+  /**
+   * 合并切片的错误信息
+   */
+  mergeError: Ref<unknown>
+
+  /**
+   * 开始上传
+   * @param {File} uploadFile 上传原始文件
+   */
+  start: (uploadFile: File) => Promise<void>
+
+  /**
+   * 取消上传
+   */
+  cancel: () => void
+
+  /**
+   * 恢复上传
+   */
+  resume: () => Promise<void>
+}
+
+export interface SliceUploadOptions<T, R> {
+  /**
+   * 切片大小
+   * @default 1024 * 1014 * 10
+   */
+  chunkSize?: number
+
+  /**
+   * 并发请求数量
+   * @default 5
+   */
+  concurrentMax?: number
+
+  /**
+   * 失败后尝试重试的次数
+   * @default 2
+   */
+  concurrentRetryMax?: number
+
+  /**
+   * 开始计算文件 hash
+   */
+  beforeFileHash?: BeforeFileHash
+
+  /**
+   * 计算文件 hash 的进度
+   */
+  progressFileHash?: ProcessFileHash
+
+  /**
+   * 计算文件 hash 成功
+   */
+  successFileHash?: SuccessFileHash
+
+  /**
+   * 计算文件 hash 失败
+   */
+  errorFileHash?: ErrorFileHash
+
+  /**
+   * 开始上传切片
+   */
+  beforeUploadChunk?: BeforeUploadChunk
+
+  /**
+   * 上传切片成功
+   */
+  successUploadChunk?: SuccessUploadChunk
+
+  /**
+   * 上传切片失败
+   */
+  errorUploadChunk?: ErrorUploadChunk
+
+  /**
+   * 上传切片进度
+   */
+  progressUploadChunk?: ProgressUploadChunk
+
+  /**
+   * 开始合并切片
+   */
+  beforeMergeChunk?: BeforeMergeChunk
+
+  /**
+   * 合并切片成功
+   */
+  successMergeChunk?: SuccessMergeChunk
+
+  /**
+   * 合并切片失败
+   */
+  errorMergeChunk?: ErrorMergeChunk
+
+  /**
+   * 切片在提交表单中的字段名
+   * @default 'file'
+   */
+  name?: string
+
+  /**
+   * fileHash 在合并中的字段名
+   * @default 'fileHash'
+   */
+  mergeName?: string
+
+  /**
+   * 是否允许携带 cookie
+   * @default false
+   */
+  withCredentials?: boolean
+
+  /**
+   * 上传切片的请求地址
+   */
+  uploadAction?: UploadAction
+
+  /**
+   * 上传切片的请求数据
+   */
+  uploadData?: UploadData
+
+  /**
+   * 上传切片的请求头
+   */
+  uploadHeaders?: Data
+
+  /**
+   * 上传切片的请求方法
+   * @default 'post'
+   */
+  uploadMethod?: string
+
+  /**
+   * 自定义上传请求
+   */
+  customUploadRequest?: CustomUploadRequest<T>
+
+  /**
+   * 合并切片的请求地址
+   */
+  mergeAction?: MergeAction
+
+  /**
+   * 合并切片的请求数据
+   */
+  mergeData?: MergeData
+
+  /**
+   * 合并切片的请求头
+   */
+  mergeHeaders?: Data
+
+  /**
+   * 合并切片的请求方法
+   * @default 'post'
+   */
+  mergeMethod?: string
+
+  /**
+   * 自定义合并请求
+   */
+  customMergeRequest?: CustomMergeRequest<R>
+}
+
+export type MergeSliceUploadOptions<T, R> = Required<
+  Pick<
+    SliceUploadOptions<T, R>,
+    | 'chunkSize'
+    | 'concurrentMax'
+    | 'concurrentRetryMax'
+    | 'name'
+    | 'mergeName'
+    | 'withCredentials'
+    | 'uploadMethod'
+    | 'mergeMethod'
+  >
+> &
+  SliceUploadOptions<T, R>

@@ -1,27 +1,13 @@
 import { ref, toRaw } from 'vue'
 import type { Ref } from 'vue'
 import { Chunk } from './helpers'
-import { Status } from './interface'
-import type {
-  UploadAction,
-  UploadData,
-  Data,
-  BeforeUploadChunk,
-  SuccessUploadChunk,
-  ErrorUploadChunk,
-  MergeAction,
-  MergeData,
-  BeforeMergeChunk,
-  SuccessMergeChunk,
-  ErrorMergeChunk,
-  ProgressUploadChunk,
-  CustomUploadRequest,
-  CustomMergeRequest,
-  BeforeFileHash,
-  ProcessFileHash,
-  SuccessFileHash,
-  ErrorFileHash,
+import {
+  MergeSliceUploadOptions,
+  SliceFileUploadReturn,
+  SliceUploadOptions,
+  Status,
 } from './interface'
+import type { Data } from './interface'
 import type {
   FileHashToMain,
   FileHashToWorker,
@@ -40,67 +26,6 @@ import {
   RequestError,
 } from './utils'
 import FileHashWorker from './worker.js?worker&inline'
-
-export interface SliceUploadOptions<T, R> {
-  chunkSize?: number
-  concurrentMax?: number
-  concurrentRetryMax?: number
-
-  /**
-   * ========== hask hooks ==========
-   */
-  beforeFileHash?: BeforeFileHash
-  progressFileHash?: ProcessFileHash
-  successFileHash?: SuccessFileHash
-  errorFileHash?: ErrorFileHash
-
-  /**
-   * ========== upload chunk hooks ==========
-   */
-  beforeUploadChunk?: BeforeUploadChunk
-  successUploadChunk?: SuccessUploadChunk
-  errorUploadChunk?: ErrorUploadChunk
-  progressUploadChunk?: ProgressUploadChunk
-
-  /**
-   * merge chunk hooks
-   */
-  beforeMergeChunk?: BeforeMergeChunk
-  successMergeChunk?: SuccessMergeChunk
-  errorMergeChunk?: ErrorMergeChunk
-
-  name?: string
-  mergeName?: string
-
-  withCredentials?: boolean
-
-  uploadAction?: UploadAction
-  uploadData?: UploadData
-  uploadHeaders?: Data
-  uploadMethod?: string
-  customUploadRequest?: CustomUploadRequest<T>
-
-  mergeAction?: MergeAction
-  mergeData?: MergeData
-  mergeHeaders?: Data
-  mergeMethod?: string
-  customMergeRequest?: CustomMergeRequest<R>
-}
-
-export type MergeSliceUploadOptions<T, R> = Required<
-  Pick<
-    SliceUploadOptions<T, R>,
-    | 'chunkSize'
-    | 'concurrentMax'
-    | 'concurrentRetryMax'
-    | 'name'
-    | 'mergeName'
-    | 'withCredentials'
-    | 'uploadMethod'
-    | 'mergeMethod'
-  >
-> &
-  SliceUploadOptions<T, R>
 
 // 10M
 const DEFAULT_CHUNK_SIZE = 1024 * 1024 * 10
@@ -147,8 +72,7 @@ const createMergeParams = (
 
 export const useSliceUpload = <T, R>(
   options: SliceUploadOptions<T, R> = {}
-) => {
-  // merge options
+): SliceFileUploadReturn<R> => {
   const {
     chunkSize,
     name,
@@ -303,98 +227,116 @@ export const useSliceUpload = <T, R>(
           chunk,
           index,
         })
-      : createFormData(name, chunk, uploadData)
+      : createFormData(name, chunk, uploadData as Data)
 
-    const onBefore = () => {
-      callWithErrorHandling(beforeUploadChunk, Hooks.BEFORE_UPLOAD_CHUNK, {
-        file,
-        fileHash,
-        index,
-        chunk,
-      })
-
-      chunk.setUploading()
-    }
-
-    const onSuccess = (response: T) => {
-      chunk.setSuccess(response)
-      callWithErrorHandling(successUploadChunk, Hooks.SUCCESS_UPLOAD_CHUNK, {
-        file,
-        fileHash,
-        index,
-        chunk,
-        response,
-      })
-    }
-
-    const onError = (error: RequestError) => {
-      chunk.setError(
-        Error2StatusMap[error.code] || Status.ERROR,
-        error.response
-      )
-      callWithErrorHandling(errorUploadChunk, Hooks.ERROR_UPLOAD_CHUNK, {
-        file,
-        fileHash,
-        index,
-        chunk,
-        error,
-      })
-    }
-
-    const onProgress = (loaded: number, total: number) => {
-      chunk.progress = (loaded / total) * 100
-      callWithErrorHandling(progressUploadChunk, Hooks.PROGRESS_UPLOAD_CHUNK, {
-        file,
-        fileHash,
-        index,
-        chunk,
-        loaded,
-        total,
-      })
-    }
-
-    const onAbort = (abort: () => void) => {
-      if (aborts) {
-        aborts[index] = abort
+    return new Promise<T>((_resolve, _reject) => {
+      const resolve = (response: T) => {
+        _resolve(response)
       }
-    }
 
-    const params: InternalCustomUploadRequest<T> = {
-      url,
-      data,
-      file,
-      fileHash,
-      chunk,
-      index,
-      headers: uploadHeaders,
-      method,
-      onSuccess,
-      onError,
-      onProgress,
-      onBefore,
-      onAbort,
-    }
+      const reject = (error: any) => {
+        _reject(error)
+      }
 
-    if (isFunction(customUploadRequest)) {
-      return await _createCustomUploadChunkTask(params)
-    }
+      const onBefore = () => {
+        callWithErrorHandling(beforeUploadChunk, Hooks.BEFORE_UPLOAD_CHUNK, {
+          file,
+          fileHash,
+          index,
+          chunk,
+        })
 
-    if (!url) {
-      throw new Error('missing upload url')
-    }
+        chunk.setUploading()
+      }
 
-    return await _createDefaultUploadChunkTask(params)
+      const onSuccess = (response: T) => {
+        chunk.setSuccess(response)
+        callWithErrorHandling(successUploadChunk, Hooks.SUCCESS_UPLOAD_CHUNK, {
+          file,
+          fileHash,
+          index,
+          chunk,
+          response,
+        })
+
+        resolve(response)
+      }
+
+      const onError = (error: RequestError) => {
+        chunk.setError(
+          Error2StatusMap[error.code] || Status.ERROR,
+          error.response
+        )
+        callWithErrorHandling(errorUploadChunk, Hooks.ERROR_UPLOAD_CHUNK, {
+          file,
+          fileHash,
+          index,
+          chunk,
+          error,
+        })
+
+        reject(error)
+      }
+
+      const onProgress = (loaded: number, total: number) => {
+        chunk.progress = (loaded / total) * 100
+        callWithErrorHandling(
+          progressUploadChunk,
+          Hooks.PROGRESS_UPLOAD_CHUNK,
+          {
+            file,
+            fileHash,
+            index,
+            chunk,
+            loaded,
+            total,
+          }
+        )
+      }
+
+      const onAbort = (abort: () => void) => {
+        if (aborts) {
+          aborts[index] = abort
+        }
+      }
+
+      const params: InternalCustomUploadRequest<T> = {
+        url,
+        data,
+        file,
+        fileHash,
+        chunk,
+        index,
+        headers: uploadHeaders,
+        method,
+        onSuccess,
+        onError,
+        onProgress,
+        onBefore,
+        onAbort,
+      }
+
+      if (isFunction(customUploadRequest)) {
+        return _createCustomUploadChunkTask(params)
+      }
+
+      if (!url) {
+        throw new Error('missing upload url')
+      }
+
+      _createDefaultUploadChunkTask(params)
+    })
   }
 
   /**
    * 创建切片的上传任务 - 自定义
    */
-  const _createCustomUploadChunkTask = async (
+  const _createCustomUploadChunkTask = (
     params: InternalCustomUploadRequest<T>
   ) => {
     params.onBefore()
 
-    return await callWithAsyncErrorHandling(
+    callWithAsyncErrorHandling(
       customUploadRequest!,
       Hooks.CUSTOM_UPLOAD_CHUNK,
       params
@@ -491,64 +433,78 @@ export const useSliceUpload = <T, R>(
         })
       : createMergeParams(fileHash, mergeName, mergeData)
 
-    const onBefore = () => {
-      mergeLoading.value = true
-      callWithErrorHandling(beforeMergeChunk, Hooks.BEFORE_MERGE_CHUNK, {
+    return new Promise<R>((_resovle, _reject) => {
+      const resolve = (response: R) => {
+        _resovle(response)
+      }
+
+      const reject = (error: any) => {
+        _reject(error)
+      }
+
+      const onBefore = () => {
+        mergeLoading.value = true
+        callWithErrorHandling(beforeMergeChunk, Hooks.BEFORE_MERGE_CHUNK, {
+          file,
+          fileHash,
+        })
+      }
+
+      const onSuccess = (response: R) => {
+        mergeResponse.value = response
+        mergeLoading.value = false
+        callWithErrorHandling(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
+          file,
+          fileHash,
+          response,
+        })
+
+        resolve(response)
+      }
+
+      const onError = (error: unknown) => {
+        mergeError.value = error
+        mergeLoading.value = false
+        callWithErrorHandling(errorMergeChunk, Hooks.ERROR_MERGE_CHUNK, {
+          file,
+          fileHash,
+          error,
+        })
+
+        reject(error)
+      }
+
+      const params: InternalMergeUploadRequest<R> = {
+        url,
+        method,
+        headers: mergeHeaders,
         file,
         fileHash,
-      })
-    }
+        data,
+        onSuccess,
+        onError,
+        onBefore,
+      }
 
-    const onSuccess = (response: R) => {
-      mergeResponse.value = response
-      mergeLoading.value = false
-      callWithErrorHandling(successMergeChunk, Hooks.SUCCESS_MERGE_CHUNK, {
-        file,
-        fileHash,
-        response,
-      })
-    }
+      if (isFunction(customMergeRequest)) {
+        return _mergeChunksCustom(params)
+      }
 
-    const onError = (error: unknown) => {
-      mergeError.value = error
-      mergeLoading.value = false
-      callWithErrorHandling(errorMergeChunk, Hooks.ERROR_MERGE_CHUNK, {
-        file,
-        fileHash,
-        error,
-      })
-    }
+      if (!url) {
+        return reject(new Error('missing merge url'))
+      }
 
-    const params: InternalMergeUploadRequest<R> = {
-      url,
-      method,
-      headers: mergeHeaders,
-      file,
-      fileHash,
-      data,
-      onSuccess,
-      onError,
-      onBefore,
-    }
-
-    if (isFunction(customMergeRequest)) {
-      return await _mergeChunksCustom(params)
-    }
-
-    if (!url) {
-      throw new Error('missing merge url')
-    }
-
-    return await _mergeChunksDefault(params)
+      _mergeChunksDefault(params)
+    })
   }
 
   /**
    * 合并切片 - 自定义
    */
-  const _mergeChunksCustom = async (params: InternalMergeUploadRequest<R>) => {
+  const _mergeChunksCustom = (params: InternalMergeUploadRequest<R>) => {
     params.onBefore()
 
-    return await callWithAsyncErrorHandling(
+    callWithAsyncErrorHandling(
       customMergeRequest!,
       Hooks.CUSTOM_UPLOAD_CHUNK,
       params
