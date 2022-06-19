@@ -17,7 +17,8 @@ const config: UserConfigFn = async ({ command }) => {
     plugins.push(
       (await import('vite-plugin-dts')).default({
         tsConfigFilePath: path.resolve(process.cwd(), 'tsconfig.json'),
-        exclude: ['./src/utils', './src/internal-interface.ts'],
+        exclude: ['./src/internal-interface.ts'],
+        outputDir: path.resolve(process.cwd(), 'dist/@types'),
       })
     )
   }

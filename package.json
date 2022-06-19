@@ -14,7 +14,7 @@
     "dist",
     "README.md"
   ],
-  "types": "./dist/index.d.ts",
+  "types": "./dist/@types/index.d.ts",
   "homepage": "https://github.com/linhaotxl/slice-upload",
   "scripts": {
     "dev": "vite",
