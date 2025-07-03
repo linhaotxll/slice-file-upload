@@ -31,23 +31,6 @@ const setHeaders = (
   }
 }
 
-export class RequestError<T = unknown> extends Error {
-  constructor(
-    public message: string,
-    public code: ErrorCode,
-    public response?: T
-  ) {
-    super(message)
-  }
-}
-
-export enum ErrorCode {
-  ERR_TIME_OUT = 'ERR_TIME_OUT',
-  ERR_BAD_RESPONSE = 'ERR_BAD_RESPONSE',
-  ERR_NETWORK = 'ERR_NETWORK',
-  ERR_ABORT = 'ERR_ABORT',
-}
-
 export const useRequest = <T>(options: RequestOptions) => {
   const {
     withCredentials,
@@ -124,13 +107,7 @@ export const useRequest = <T>(options: RequestOptions) => {
         if (status >= 200 && status < 300) {
           return _resolve(this.response)
         }
-        _reject(
-          new RequestError(
-            `Request failed with status code ${this.status}`,
-            ErrorCode.ERR_BAD_RESPONSE,
-            this.response
-          )
-        )
+        _reject(new Error(`Request failed with status code ${this.status}`))
       })
 
       xhr.upload.addEventListener('progress', function (e) {
@@ -142,24 +119,23 @@ export const useRequest = <T>(options: RequestOptions) => {
       xhr.addEventListener('timeout', function () {
         isTimeout.value = true
         _reject(
-          new RequestError(
+          new Error(
             `${
               timeout
                 ? 'timeout of ' + timeout + 'ms exceeded'
                 : 'timeout exceeded'
-            }`,
-            ErrorCode.ERR_TIME_OUT
+            }`
           )
         )
       })
 
       xhr.addEventListener('abort', function () {
         isAbort.value = true
-        _reject(new RequestError('Request aborted', ErrorCode.ERR_ABORT))
+        _reject(new Error('Request aborted'))
       })
 
       xhr.addEventListener('error', function () {
-        _reject(new RequestError('Network Error', ErrorCode.ERR_NETWORK))
+        _reject(new Error('Network Error'))
       })
 
       xhr.send(resolveData)

@@ -18,6 +18,7 @@ export enum Hooks {
   MERGE_DATA = 'md',
   CUSTOM_UPLOAD_CHUNK = 'cuc',
   CUSTOM_MERGE_CHUNK = 'cmc',
+  CHECK_UPLOAD_CHUNK = 'cuc',
 }
 
 export const ErrorTypeString: Record<Hooks, string> = {

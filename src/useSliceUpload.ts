@@ -22,8 +22,6 @@ import {
   useRequest,
   callWithAsyncErrorHandling,
   concurrentRequest,
-  ErrorCode,
-  RequestError,
 } from './utils'
 import FileHashWorker from './worker.js?worker&inline'
 
@@ -42,13 +40,6 @@ const defaultOptions: MergeSliceUploadOptions<unknown, unknown> = {
   mergeMethod: 'post',
 
   withCredentials: false,
-}
-
-const Error2StatusMap: Record<ErrorCode, Status> = {
-  [ErrorCode.ERR_ABORT]: Status.ABORT,
-  [ErrorCode.ERR_BAD_RESPONSE]: Status.ERROR,
-  [ErrorCode.ERR_NETWORK]: Status.ERROR,
-  [ErrorCode.ERR_TIME_OUT]: Status.TIMEOUT,
 }
 
 const createFormData = (name: string, chunk: Chunk, data?: Data) => {
@@ -95,6 +86,10 @@ export const useSliceUpload = <T, R>(
     successFileHash,
     progressFileHash,
     errorFileHash,
+
+    checkUpload,
+
+    skipUploadedChunk,
 
     beforeUploadChunk,
     successUploadChunk,
@@ -257,16 +252,21 @@ export const useSliceUpload = <T, R>(
           index,
           chunk,
           response,
+          total: chunks.value.length,
+          loaded: chunks.value.reduce<number>((prev, curr) => {
+            if (curr.status === Status.SUCCESS) {
+              return prev + 1
+            }
+            return prev
+          }, 0),
         })
 
         resolve(response)
       }
 
-      const onError = (error: RequestError) => {
-        chunk.setError(
-          Error2StatusMap[error.code] || Status.ERROR,
-          error.response
-        )
+      const onError = (error: any) => {
+        chunk.setError(Status.ERROR, error)
+
         callWithErrorHandling(errorUploadChunk, Hooks.ERROR_UPLOAD_CHUNK, {
           file,
           fileHash,
@@ -397,13 +397,21 @@ export const useSliceUpload = <T, R>(
   const startUpload = async (file: File, fileHash: string, chunks: Chunk[]) => {
     aborted = false
     aborts = []
+
+    // 需要跳过的切片索引
+    const skipIndex = (await skipUploadedChunk?.({ file, fileHash, chunks: chunks.values })) ?? 0
+
     // 对没有上传的切片创建请求任务
     const tasks: (() => Promise<unknown>)[] = []
     chunks.forEach((chunk, index) => {
-      if (chunk.isUnUpload()) {
+      if (chunk.isUnUpload() && index > skipIndex) {
         tasks.push(() => createUploadChunkTask(file, fileHash, index, chunk))
       }
     })
+
+    if (!tasks.length) {
+      return
+    }
 
     // 并发控制数量执行上传请求
     await concurrentRequest(tasks, {
@@ -572,7 +580,7 @@ export const useSliceUpload = <T, R>(
    * 恢复上传
    */
   const resumeUpload = async () => {
-    const isUnUpload = chunks.value!.find(chunk => chunk.isUnUpload())
+    const isUnUpload = chunks.value.find(chunk => chunk.isUnUpload())
     if (file && isUnUpload) {
       toggleUpload(async () => {
         await uploadAndMerge(file!, fileHash.value!, chunks!)
@@ -597,8 +605,14 @@ export const useSliceUpload = <T, R>(
     fileHash: string,
     chunks: Ref<Chunk[]>
   ) => {
-    await startUpload(uploadFile, fileHash, chunks.value)
-    await mergeChunks(uploadFile, fileHash)
+    const exist = await callWithAsyncErrorHandling(
+      () => checkUpload?.({ file: uploadFile, fileHash, chunks: chunks.value }),
+      Hooks.CHECK_UPLOAD_CHUNK
+    )
+    if (exist !== false) {
+      await startUpload(uploadFile, fileHash, chunks.value)
+      await mergeChunks(uploadFile, fileHash)
+    }
   }
 
   return {

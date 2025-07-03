@@ -491,15 +491,5 @@ export declare enum Status {
      * 正在上传
      */
     UPLOADING = "uploading",
-
-    /**
-     * 取消上传
-     */
-    ABORT = "abort",
-
-    /**
-     * 超时
-     */
-    TIMEOUT = "timeout"
 }
 ```

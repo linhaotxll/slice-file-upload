@@ -1,6 +1,5 @@
 import { Ref } from 'vue'
 import { Chunk } from './helpers'
-import { RequestError } from './utils'
 
 export type Data = Record<string, unknown>
 
@@ -42,6 +41,24 @@ export type ErrorFileHash = (params: {
 }) => void
 
 /**
+ * check upload chunk
+ */
+export type CheckUploadChunk = (params: {
+  fileHash: string
+  chunks: Chunk[]
+  file: File
+}) => boolean | Promise<boolean>
+
+/**
+ * skip uploaded chunk
+ */
+export type SkipUploadedChunk = (params: {
+  fileHash: string
+  chunks: Chunk[]
+  file: File
+}) => number | Promise<number>
+
+/**
  * before upload chunk hook
  */
 export type BeforeUploadChunk = (params: {
@@ -60,6 +77,8 @@ export type SuccessUploadChunk = <T = any>(params: {
   index: number
   chunk: Chunk
   response: T
+  total: number
+  loaded: number
 }) => void
 
 /**
@@ -98,7 +117,7 @@ export interface CustomUploadRequestOptions<T = unknown> {
   chunk: Chunk
   index: number
   onSuccess: (response: T) => void
-  onError: (error: RequestError) => void
+  onError: (error: any) => void
   onProgress: (loaded: number, total: number) => void
   onAbort: (abort: () => void) => void
 }
@@ -183,8 +202,6 @@ export enum Status {
   SUCCESS = 'success',
   ERROR = 'error',
   UPLOADING = 'uploading',
-  ABORT = 'abort',
-  TIMEOUT = 'timeout',
 }
 
 /**
@@ -291,6 +308,16 @@ export interface SliceUploadOptions<T, R> {
    * 计算文件 hash 失败
    */
   errorFileHash?: ErrorFileHash
+
+  /**
+   * 检查是否已经上传过，如果有则不在进行上传和合并
+   */
+  checkUpload?: CheckUploadChunk
+
+  /**
+   * 过滤已经上传的切片
+   */
+  skipUploadedChunk?: SkipUploadedChunk
 
   /**
    * 开始上传切片

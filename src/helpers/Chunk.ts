@@ -8,7 +8,7 @@ export class Chunk {
   constructor(public blob: Blob, public status: Status = Status.PENDING) {}
 
   public isUnUpload() {
-    return this.status === Status.PENDING || this.status === Status.ABORT
+    return this.status === Status.PENDING || this.status === Status.ERROR
   }
 
   public setUploading() {
