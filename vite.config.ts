@@ -1,29 +1,25 @@
-import path from 'path'
-import { UserConfigFn, Plugin } from 'vite'
+import path from 'node:path'
+
+import vue from '@vitejs/plugin-vue'
+import dts from 'vite-plugin-dts'
+
+import type { UserConfigFn } from 'vite'
 
 const config: UserConfigFn = async ({ command }) => {
   const isProd = command === 'build'
-  const plugins: Plugin[] = []
-  if (!isProd) {
-    plugins.push((await import('@vitejs/plugin-vue')).default())
-    plugins.push(
-      (await import('vite-plugin-eslint')).default({
-        fix: true,
-        exclude: 'node_modules',
-        extensions: ['.ts', '.tsx'],
-      })
-    )
-  } else {
-    plugins.push(
-      (await import('vite-plugin-dts')).default({
-        tsConfigFilePath: path.resolve(process.cwd(), 'tsconfig.json'),
-        exclude: ['./src/internal-interface.ts'],
-        outputDir: path.resolve(process.cwd(), 'dist/@types'),
-      })
-    )
-  }
+
   return {
-    plugins,
+    plugins: [
+      vue(),
+
+      isProd
+        ? dts({
+            tsconfigPath: path.resolve(process.cwd(), 'tsconfig.json'),
+            exclude: ['./src/internal-interface.ts'],
+            outDir: path.resolve(process.cwd(), 'dist/@types'),
+          })
+        : undefined,
+    ],
 
     server: {
       port: 3001,
@@ -41,7 +37,7 @@ const config: UserConfigFn = async ({ command }) => {
         name: 'slice-upload',
         formats: ['es'],
       },
-      sourcemap: false,
+      sourcemap: true,
       rollupOptions: {
         output: {
           dir: path.resolve(process.cwd(), 'dist'),

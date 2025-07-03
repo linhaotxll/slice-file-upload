@@ -1,7 +1,8 @@
 import SparkMD5 from 'spark-md5'
-import { FileHashToMain, FileHashToWorker } from './internal-interface'
 
-self.addEventListener('message', e => {
+import type { FileHashToMain, FileHashToWorker } from './internal-interface'
+
+globalThis.addEventListener('message', (e) => {
   let loadCount = 0
   const { chunks } = e.data as FileHashToWorker
   const total = chunks.length
@@ -11,7 +12,7 @@ self.addEventListener('message', e => {
     const chunk = chunks[index]
     const fileReader = new FileReader()
 
-    fileReader.addEventListener('load', e => {
+    fileReader.addEventListener('load', (e) => {
       spark.append(e.target?.result as ArrayBuffer)
 
       const data: FileHashToMain = {
@@ -21,7 +22,7 @@ self.addEventListener('message', e => {
       }
 
       if (loadCount === total) {
-        self.postMessage({
+        globalThis.postMessage({
           ...data,
           done: true,
           fileHash: spark.end(),
@@ -29,19 +30,19 @@ self.addEventListener('message', e => {
         return
       }
 
-      self.postMessage({ ...data })
+      globalThis.postMessage({ ...data })
 
       load(index + 1)
     })
 
-    fileReader.addEventListener('error', error => {
+    fileReader.addEventListener('error', (error) => {
       const data: FileHashToMain = {
         done: false,
         progress: (++loadCount / total) * 100,
         index,
         error,
       }
-      self.postMessage(data)
+      globalThis.postMessage(data)
     })
 
     fileReader.readAsArrayBuffer(chunk.blob)

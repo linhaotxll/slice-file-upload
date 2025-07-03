@@ -1,19 +1,9 @@
 import { ref, toRaw } from 'vue'
-import type { Ref } from 'vue'
+
 import { Chunk } from './helpers'
 import {
-  MergeSliceUploadOptions,
-  SliceFileUploadReturn,
-  SliceUploadOptions,
   Status,
 } from './interface'
-import type { Data } from './interface'
-import type {
-  FileHashToMain,
-  FileHashToWorker,
-  InternalCustomUploadRequest,
-  InternalMergeUploadRequest,
-} from './internal-interface'
 import {
   Hooks,
   callWithErrorHandling,
@@ -24,6 +14,15 @@ import {
   concurrentRequest,
 } from './utils'
 import FileHashWorker from './worker.js?worker&inline'
+
+import type { Data, MergeSliceUploadOptions, SliceFileUploadReturn, SliceUploadOptions } from './interface'
+import type {
+  FileHashToMain,
+  FileHashToWorker,
+  InternalCustomUploadRequest,
+  InternalMergeUploadRequest,
+} from './internal-interface'
+import type { Ref } from 'vue'
 
 // 10M
 const DEFAULT_CHUNK_SIZE = 1024 * 1024 * 10
@@ -42,28 +41,22 @@ const defaultOptions: MergeSliceUploadOptions<unknown, unknown> = {
   withCredentials: false,
 }
 
-const createFormData = (name: string, chunk: Chunk, data?: Data) => {
+function createFormData (name: string, chunk: Chunk, data?: Data) {
   const fd = new FormData()
   fd.append(name, chunk.blob)
   if (data) {
-    Object.keys(data).forEach(key => {
+    Object.keys(data).forEach((key) => {
       fd.append(key, data[key] as string | Blob)
     })
   }
   return fd
 }
 
-const createMergeParams = (
-  fileHash: string,
-  name: string,
-  data: Data | undefined
-) => {
+function createMergeParams (fileHash: string, name: string, data: Data | undefined) {
   return { [name]: fileHash, ...data }
 }
 
-export const useSliceUpload = <T, R>(
-  options: SliceUploadOptions<T, R> = {}
-): SliceFileUploadReturn<R> => {
+export function useSliceUpload<T, R> (options: SliceUploadOptions<T, R> = {}): SliceFileUploadReturn<R> {
   const {
     chunkSize,
     name,
@@ -121,7 +114,7 @@ export const useSliceUpload = <T, R>(
   let file: File | undefined
 
   // 中断请求的列表
-  let aborts: ((() => void) | undefined)[] | undefined
+  let aborts: ((()=> void) | undefined)[] | undefined
   let aborted = false
 
   /**
@@ -151,11 +144,11 @@ export const useSliceUpload = <T, R>(
         beforeFileHash,
         Hooks.BEFORE_FILE_HASH,
         file,
-        chunks
+        chunks,
       )
 
       const worker = new FileHashWorker()
-      worker.addEventListener('message', e => {
+      worker.addEventListener('message', (e) => {
         const { fileHash, progress, index, done } = e.data as FileHashToMain
 
         fileHashProgress.value = progress
@@ -179,7 +172,7 @@ export const useSliceUpload = <T, R>(
         }
       })
 
-      worker.addEventListener('messageerror', error => {
+      worker.addEventListener('messageerror', (error) => {
         fileHashLoading.value = false
         fileHashError.value = error
         // TODO:
@@ -188,7 +181,7 @@ export const useSliceUpload = <T, R>(
           chunks,
           error,
         })
-        reject()
+        reject(error)
       })
 
       const data: FileHashToWorker = { chunks: toRaw(chunks) }
@@ -203,7 +196,7 @@ export const useSliceUpload = <T, R>(
     file: File,
     fileHash: string,
     index: number,
-    chunk: Chunk
+    chunk: Chunk,
   ) => {
     const method = uploadMethod
     const url = isFunction(uploadAction)
@@ -290,11 +283,11 @@ export const useSliceUpload = <T, R>(
             chunk,
             loaded,
             total,
-          }
+          },
         )
       }
 
-      const onAbort = (abort: () => void) => {
+      const onAbort = (abort: ()=> void) => {
         if (aborts) {
           aborts[index] = abort
         }
@@ -331,24 +324,24 @@ export const useSliceUpload = <T, R>(
   /**
    * 创建切片的上传任务 - 自定义
    */
-  const _createCustomUploadChunkTask = (
-    params: InternalCustomUploadRequest<T>
-  ) => {
+  function _createCustomUploadChunkTask (
+    params: InternalCustomUploadRequest<T>,
+  ) {
     params.onBefore()
 
     callWithAsyncErrorHandling(
       customUploadRequest!,
       Hooks.CUSTOM_UPLOAD_CHUNK,
-      params
+      params,
     )
   }
 
   /**
    * 创建切片的上传任务 - 默认
    */
-  const _createDefaultUploadChunkTask = async (
-    params: InternalCustomUploadRequest<T>
-  ) => {
+  async function _createDefaultUploadChunkTask (
+    params: InternalCustomUploadRequest<T>,
+  ) {
     const {
       url,
       data,
@@ -371,7 +364,7 @@ export const useSliceUpload = <T, R>(
         withCredentials,
         headers,
         responseType: 'json',
-        onUploadProgress(loaded, total) {
+        onUploadProgress (loaded, total) {
           onProgress(loaded, total)
         },
       })
@@ -399,10 +392,10 @@ export const useSliceUpload = <T, R>(
     aborts = []
 
     // 需要跳过的切片索引
-    const skipIndex = (await skipUploadedChunk?.({ file, fileHash, chunks: chunks.values })) ?? 0
+    const skipIndex = (await skipUploadedChunk?.({ file, fileHash, chunks })) ?? -1
 
     // 对没有上传的切片创建请求任务
-    const tasks: (() => Promise<unknown>)[] = []
+    const tasks: (()=> Promise<unknown>)[] = []
     chunks.forEach((chunk, index) => {
       if (chunk.isUnUpload() && index > skipIndex) {
         tasks.push(() => createUploadChunkTask(file, fileHash, index, chunk))
@@ -509,20 +502,20 @@ export const useSliceUpload = <T, R>(
   /**
    * 合并切片 - 自定义
    */
-  const _mergeChunksCustom = (params: InternalMergeUploadRequest<R>) => {
+  function _mergeChunksCustom (params: InternalMergeUploadRequest<R>) {
     params.onBefore()
 
     callWithAsyncErrorHandling(
       customMergeRequest!,
       Hooks.CUSTOM_UPLOAD_CHUNK,
-      params
+      params,
     )
   }
 
   /**
    * 合并切片 - 默认
    */
-  const _mergeChunksDefault = async (params: InternalMergeUploadRequest<R>) => {
+  async function _mergeChunksDefault (params: InternalMergeUploadRequest<R>) {
     const { url, method, data, onBefore, onError, onSuccess } = params
     try {
       onBefore()
@@ -566,7 +559,7 @@ export const useSliceUpload = <T, R>(
   const cancelUpload = () => {
     if (aborts) {
       aborted = true
-      aborts!.forEach(cancel => {
+      aborts!.forEach((cancel) => {
         if (cancel) {
           cancel()
         }
@@ -591,7 +584,7 @@ export const useSliceUpload = <T, R>(
   /**
    * 切换 uploading 状态
    */
-  const toggleUpload = async (fn: (...args: unknown[]) => void) => {
+  async function toggleUpload (fn: (...args: unknown[])=> void) {
     uploading.value = true
     await fn()
     uploading.value = false
@@ -600,14 +593,14 @@ export const useSliceUpload = <T, R>(
   /**
    * 上传、合并切片
    */
-  const uploadAndMerge = async (
+  async function uploadAndMerge (
     uploadFile: File,
     fileHash: string,
-    chunks: Ref<Chunk[]>
-  ) => {
+    chunks: Ref<Chunk[]>,
+  ) {
     const exist = await callWithAsyncErrorHandling(
       () => checkUpload?.({ file: uploadFile, fileHash, chunks: chunks.value }),
-      Hooks.CHECK_UPLOAD_CHUNK
+      Hooks.CHECK_UPLOAD_CHUNK,
     )
     if (exist !== false) {
       await startUpload(uploadFile, fileHash, chunks.value)

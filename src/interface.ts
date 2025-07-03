@@ -1,5 +1,5 @@
-import { Ref } from 'vue'
-import { Chunk } from './helpers'
+import type { Chunk } from './helpers'
+import type { Ref } from 'vue'
 
 export type Data = Record<string, unknown>
 
@@ -10,7 +10,7 @@ export type Data = Record<string, unknown>
 /**
  * before hash hook
  */
-export type BeforeFileHash = (file: File, chunks: Chunk[]) => void
+export type BeforeFileHash = (file: File, chunks: Chunk[])=> void
 
 /**
  * change hash hook
@@ -20,7 +20,7 @@ export type ProcessFileHash = (params: {
   progress: number
   index: number
   chunks: Chunk[]
-}) => void
+})=> void
 
 /**
  * success hash hook
@@ -29,7 +29,7 @@ export type SuccessFileHash = (params: {
   fileHash: string
   file: File
   chunks: Chunk[]
-}) => void
+})=> void
 
 /**
  * error hash hook
@@ -38,7 +38,7 @@ export type ErrorFileHash = (params: {
   error: unknown
   file: File
   chunks: Chunk[]
-}) => void
+})=> void
 
 /**
  * check upload chunk
@@ -47,7 +47,7 @@ export type CheckUploadChunk = (params: {
   fileHash: string
   chunks: Chunk[]
   file: File
-}) => boolean | Promise<boolean>
+})=> boolean | Promise<boolean>
 
 /**
  * skip uploaded chunk
@@ -56,7 +56,7 @@ export type SkipUploadedChunk = (params: {
   fileHash: string
   chunks: Chunk[]
   file: File
-}) => number | Promise<number>
+})=> number | Promise<number>
 
 /**
  * before upload chunk hook
@@ -66,7 +66,7 @@ export type BeforeUploadChunk = (params: {
   fileHash: string
   index: number
   chunk: Chunk
-}) => void
+})=> void
 
 /**
  * success upload chunk hook
@@ -79,7 +79,7 @@ export type SuccessUploadChunk = <T = any>(params: {
   response: T
   total: number
   loaded: number
-}) => void
+})=> void
 
 /**
  * error upload chunk hook
@@ -90,7 +90,7 @@ export type ErrorUploadChunk = (params: {
   index: number
   chunk: Chunk
   error: unknown
-}) => void
+})=> void
 
 /**
  * progress upload chunk hook
@@ -102,7 +102,7 @@ export type ProgressUploadChunk = (params: {
   index: number
   loaded: number
   total: number
-}) => void
+})=> void
 
 /**
  * custom upload request
@@ -116,14 +116,14 @@ export interface CustomUploadRequestOptions<T = unknown> {
   fileHash: string
   chunk: Chunk
   index: number
-  onSuccess: (response: T) => void
-  onError: (error: any) => void
-  onProgress: (loaded: number, total: number) => void
-  onAbort: (abort: () => void) => void
+  onSuccess: (response: T)=> void
+  onError: (error: any)=> void
+  onProgress: (loaded: number, total: number)=> void
+  onAbort: (abort: ()=> void)=> void
 }
 export type CustomUploadRequest<T = unknown> = (
   options: CustomUploadRequestOptions<T>
-) => void
+)=> void
 
 /**
  * before merge chunk hook
@@ -131,7 +131,7 @@ export type CustomUploadRequest<T = unknown> = (
 export type BeforeMergeChunk = (params: {
   file: File
   fileHash: string
-}) => void
+})=> void
 
 /**
  * success merge chunk hook
@@ -140,7 +140,7 @@ export type SuccessMergeChunk = <T = any>(params: {
   file: File
   fileHash: string
   response: T
-}) => void
+})=> void
 
 /**
  * error merge chunk hook
@@ -149,7 +149,7 @@ export type ErrorMergeChunk = <T = any>(params: {
   file: File
   fileHash: string
   error: T
-}) => void
+})=> void
 
 /**
  * custom upload request
@@ -161,43 +161,43 @@ export interface CustomMergeRequestOptions<R = unknown> {
   method: string
   file: File
   fileHash: string
-  onSuccess: (response: R) => void
-  onError: (error: any) => void
+  onSuccess: (response: R)=> void
+  onError: (error: any)=> void
 }
 export type CustomMergeRequest<R = unknown> = (
   params: CustomMergeRequestOptions<R>
-) => void
+)=> void
 
 // upload
 export type UploadAction =
-  | string
-  | ((params: {
-      file: File
-      chunk: Chunk
-      index: number
-      fileHash: string
-    }) => string | Promise<string>)
+  | string |
+  ((params: {
+    file: File
+    chunk: Chunk
+    index: number
+    fileHash: string
+  })=> string | Promise<string>)
 
 export type UploadData =
-  | Data
-  | FormData
-  | ((params: {
-      file: File
-      chunk: Chunk
-      index: number
-      fileHash: string
-    }) => Data | FormData | Promise<Data | FormData>)
+  | Data |
+  FormData |
+  ((params: {
+    file: File
+    chunk: Chunk
+    index: number
+    fileHash: string
+  })=> Data | FormData | Promise<Data | FormData>)
 
 // merge
 export type MergeAction =
-  | string
-  | ((params: { file: File; fileHash: string }) => string | Promise<string>)
+  | string |
+  ((params: { file: File; fileHash: string; })=> string | Promise<string>)
 
 export type MergeData =
-  | Data
-  | ((params: { file: File; fileHash: string }) => Data | Promise<Data>)
+  | Data |
+  ((params: { file: File; fileHash: string; })=> Data | Promise<Data>)
 
-export enum Status {
+export const enum Status {
   PENDING = 'pending',
   SUCCESS = 'success',
   ERROR = 'error',
@@ -257,17 +257,17 @@ export interface SliceFileUploadReturn<R> {
    * 开始上传
    * @param {File} uploadFile 上传原始文件
    */
-  start: (uploadFile: File) => Promise<void>
+  start: (uploadFile: File)=> Promise<void>
 
   /**
    * 取消上传
    */
-  cancel: () => void
+  cancel: ()=> void
 
   /**
    * 恢复上传
    */
-  resume: () => Promise<void>
+  resume: ()=> Promise<void>
 }
 
 export interface SliceUploadOptions<T, R> {
@@ -428,14 +428,14 @@ export interface SliceUploadOptions<T, R> {
 export type MergeSliceUploadOptions<T, R> = Required<
   Pick<
     SliceUploadOptions<T, R>,
-    | 'chunkSize'
-    | 'concurrentMax'
-    | 'concurrentRetryMax'
-    | 'name'
-    | 'mergeName'
-    | 'withCredentials'
-    | 'uploadMethod'
-    | 'mergeMethod'
+    | 'chunkSize' |
+    'concurrentMax' |
+    'concurrentRetryMax' |
+    'name' |
+    'mergeName' |
+    'withCredentials' |
+    'uploadMethod' |
+    'mergeMethod'
   >
 > &
-  SliceUploadOptions<T, R>
+SliceUploadOptions<T, R>

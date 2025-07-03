@@ -1,6 +1,6 @@
 import { isError, isPromise } from './types'
 
-export enum Hooks {
+export const enum Hooks {
   BEFORE_FILE_HASH = 'bfs',
   SUCCESS_FILE_HASH = 'sfs',
   CHANGE_FILE_HASH = 'cfs',
@@ -41,11 +41,11 @@ export const ErrorTypeString: Record<Hooks, string> = {
   [Hooks.CUSTOM_MERGE_CHUNK]: 'custom merge chunk',
 }
 
-export const callWithErrorHandling = <T extends (...args: any) => any>(
+export function callWithErrorHandling<T extends (...args: any)=> any> (
   fn: T | undefined,
   errorType: Hooks,
   ...args: Parameters<T>
-) => {
+) {
   let res
   try {
     res = fn?.(...(args as any[]))
@@ -55,23 +55,19 @@ export const callWithErrorHandling = <T extends (...args: any) => any>(
   return res
 }
 
-type PromiseReturnType<T extends (...args: any) => any> = T extends (
+type PromiseReturnType<T extends (...args: any)=> any> = T extends (
   ...args: any
-) => Promise<infer R>
+)=> Promise<infer R>
   ? R
   : ReturnType<T>
 
-export const callWithAsyncErrorHandling = async <
-  T extends (...args: any) => any
->(
-  fn: T,
-  errorType: Hooks,
-  ...args: Parameters<T>
-): Promise<PromiseReturnType<T>> => {
+export async function callWithAsyncErrorHandling<
+  T extends (...args: any)=> any,
+> (fn: T, errorType: Hooks, ...args: Parameters<T>): Promise<PromiseReturnType<T>> {
   return new Promise((resolve, reject) => {
     const result = callWithErrorHandling(fn, errorType, ...args)
     if (isPromise(result)) {
-      result.then(resolve).catch(e => {
+      result.then(resolve).catch((e) => {
         handleError(e, errorType)
         reject(e)
       })
@@ -81,11 +77,11 @@ export const callWithAsyncErrorHandling = async <
   })
 }
 
-export const handleError = (e: unknown, errorType: Hooks) => {
+export function handleError (e: unknown, errorType: Hooks) {
   const errorInfo = ErrorTypeString[errorType]
   throw new Error(
     `Unhandled error during execution of ${errorInfo}: ${
       isError(e) ? e.message : e
-    }`
+    }`,
   )
 }

@@ -1,5 +1,5 @@
-import { Chunk } from './helpers'
-import {
+import type { Chunk } from './helpers'
+import type {
   CustomMergeRequestOptions,
   CustomUploadRequestOptions,
 } from './interface'
@@ -18,10 +18,10 @@ export interface FileHashToMain {
 
 export interface InternalCustomUploadRequest<T = unknown>
   extends CustomUploadRequestOptions<T> {
-  onBefore: () => void
+  onBefore: ()=> void
 }
 
 export interface InternalMergeUploadRequest<R = unknown>
   extends CustomMergeRequestOptions<R> {
-  onBefore: () => void
+  onBefore: ()=> void
 }

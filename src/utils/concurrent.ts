@@ -1,10 +1,10 @@
 export interface ConcurrentRequestOptions {
   max?: number
   retryCount?: number
-  beforeRequest?: () => boolean
+  beforeRequest?: ()=> boolean
 }
 
-export type Request = (...args: unknown[]) => Promise<unknown>
+export type Request = (...args: unknown[])=> Promise<unknown>
 
 const defaultOptions: Required<ConcurrentRequestOptions> = {
   max: 5,
@@ -12,10 +12,7 @@ const defaultOptions: Required<ConcurrentRequestOptions> = {
   beforeRequest: () => true,
 }
 
-export const concurrentRequest = async (
-  requests: Request[],
-  options: ConcurrentRequestOptions = {}
-) => {
+export async function concurrentRequest (requests: Request[], options: ConcurrentRequestOptions = {}) {
   return new Promise((resolve, reject) => {
     const resolveOptions: Required<ConcurrentRequestOptions> = {
       ...defaultOptions,
@@ -69,7 +66,7 @@ export const concurrentRequest = async (
               start()
             }
           })
-          .catch(e => {
+          .catch((e) => {
             release()
 
             // 累加重试次数，超出次数直接 reject
