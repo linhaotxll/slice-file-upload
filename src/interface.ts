@@ -56,7 +56,7 @@ export type SkipUploadedChunk = (params: {
   fileHash: string
   chunks: Chunk[]
   file: File
-})=> number | Promise<number>
+})=> number[] | Promise<number[]>
 
 /**
  * before upload chunk hook
@@ -131,24 +131,6 @@ export type CustomUploadRequest<T = unknown> = (
 export type BeforeMergeChunk = (params: {
   file: File
   fileHash: string
-})=> void
-
-/**
- * success merge chunk hook
- */
-export type SuccessMergeChunk = <T = any>(params: {
-  file: File
-  fileHash: string
-  response: T
-})=> void
-
-/**
- * error merge chunk hook
- */
-export type ErrorMergeChunk = <T = any>(params: {
-  file: File
-  fileHash: string
-  error: T
 })=> void
 
 /**
@@ -317,7 +299,7 @@ export interface SliceUploadOptions<T, R> {
   /**
    * 过滤已经上传的切片
    */
-  skipUploadedChunk?: SkipUploadedChunk
+  skipChunkIndex?: SkipUploadedChunk
 
   /**
    * 开始上传切片
@@ -347,12 +329,20 @@ export interface SliceUploadOptions<T, R> {
   /**
    * 合并切片成功
    */
-  successMergeChunk?: SuccessMergeChunk
+  successMergeChunk?: (params: {
+    file: File
+    fileHash: string
+    response: T
+  })=> void
 
   /**
    * 合并切片失败
    */
-  errorMergeChunk?: ErrorMergeChunk
+  errorMergeChunk?: (params: {
+    file: File
+    fileHash: string
+    error: any
+  })=> void
 
   /**
    * 切片在提交表单中的字段名

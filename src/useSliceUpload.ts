@@ -82,7 +82,7 @@ export function useSliceUpload<T, R> (options: SliceUploadOptions<T, R> = {}): S
 
     checkUpload,
 
-    skipUploadedChunk,
+    skipChunkIndex,
 
     beforeUploadChunk,
     successUploadChunk,
@@ -392,13 +392,21 @@ export function useSliceUpload<T, R> (options: SliceUploadOptions<T, R> = {}): S
     aborts = []
 
     // 需要跳过的切片索引
-    const skipIndex = (await skipUploadedChunk?.({ file, fileHash, chunks })) ?? -1
+    const skipIndex = (await skipChunkIndex?.({ file, fileHash, chunks })) ?? []
+    const skipIndexMap = skipIndex.reduce((prev, curr) => {
+      prev[curr] = true
+      return prev
+    }, {} as Record<number, boolean>)
 
     // 对没有上传的切片创建请求任务
     const tasks: (()=> Promise<unknown>)[] = []
     chunks.forEach((chunk, index) => {
-      if (chunk.isUnUpload() && index > skipIndex) {
-        tasks.push(() => createUploadChunkTask(file, fileHash, index, chunk))
+      if (!skipIndexMap[index]) {
+        if (chunk.isUnUpload()) {
+          tasks.push(() => createUploadChunkTask(file, fileHash, index, chunk))
+        }
+      } else {
+        chunk.setSuccess(null)
       }
     })
 
