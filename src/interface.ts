@@ -35,7 +35,7 @@ export type SuccessFileHash = (params: {
  * error hash hook
  */
 export type ErrorFileHash = (params: {
-  error: unknown
+  error: any
   file: File
   chunks: Chunk[]
 })=> void
@@ -89,7 +89,7 @@ export type ErrorUploadChunk = (params: {
   fileHash: string
   index: number
   chunk: Chunk
-  error: unknown
+  error: any
 })=> void
 
 /**
@@ -218,7 +218,7 @@ export interface SliceFileUploadReturn<R> {
   /**
    * 计算文件 hash 错误信息
    */
-  fileHashError: Ref<unknown>
+  fileHashError: Ref<any>
 
   /**
    * 是否正在合并切片
@@ -233,7 +233,7 @@ export interface SliceFileUploadReturn<R> {
   /**
    * 合并切片的错误信息
    */
-  mergeError: Ref<unknown>
+  mergeError: Ref<any>
 
   /**
    * 开始上传
