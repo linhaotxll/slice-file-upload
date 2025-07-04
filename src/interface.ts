@@ -332,7 +332,7 @@ export interface SliceUploadOptions<T, R> {
   successMergeChunk?: (params: {
     file: File
     fileHash: string
-    response: T
+    response: R
   })=> void
 
   /**
